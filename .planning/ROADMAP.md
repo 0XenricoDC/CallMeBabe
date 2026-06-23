@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Env + scaffold + pytest stubs + tenant config (SQLite) + interface seams + .env.example (SETUP-01)
+- [x] 01-01-PLAN.md — Env + scaffold + pytest stubs + tenant config (SQLite) + interface seams + .env.example (SETUP-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -121,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Local Voice Loop | 0/3 | Planned | - |
+| 1. Local Voice Loop | 1/3 | In Progress|  |
 | 2. Booking + Calendar + FAQ | 0/TBD | Not started | - |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |

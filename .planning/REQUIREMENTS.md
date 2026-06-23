@@ -71,7 +71,7 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 
 ### Setup e configurazione (Setup)
 
-- [ ] **SETUP-01**: Il repo include `.env.example`, placeholder e istruzioni passo-passo per creare gli account/chiavi (Deepgram, ElevenLabs, Anthropic, e Telnyx) — nessuna chiave hardcoded
+- [x] **SETUP-01**: Il repo include `.env.example`, placeholder e istruzioni passo-passo per creare gli account/chiavi (Deepgram, ElevenLabs, Anthropic, e Telnyx) — nessuna chiave hardcoded
 
 ## v2 Requirements
 
@@ -124,7 +124,7 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 | VOICE-04 | Phase 1 | Pending |
 | VOICE-05 | Phase 1 | Pending |
 | REL-01 | Phase 1 | Pending |
-| SETUP-01 | Phase 1 | Pending |
+| SETUP-01 | Phase 1 | Complete |
 | BOOK-01 | Phase 2 | Pending |
 | BOOK-02 | Phase 2 | Pending |
 | BOOK-03 | Phase 2 | Pending |

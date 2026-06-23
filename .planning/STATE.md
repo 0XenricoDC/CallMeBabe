@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-06-23T20:29:59.935Z"
-last_activity: 2026-06-23 -- Phase 01 planning complete
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-06-23T21:14:08.333Z"
+last_activity: 2026-06-23
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** Una chiamata reale in italiano viene gestita end-to-end dal bot (saluto personalizzato, conversazione naturale a bassa latenza, azione completata) senza intervento umano e senza riscrivere codice per un nuovo cliente.
-**Current focus:** Phase 1 — Local Voice Loop
+**Current focus:** Phase 01 — local-voice-loop
 
 ## Current Position
 
-Phase: 1 of 5 (Local Voice Loop)
-Plan: 0 of TBD in current phase
+Phase: 01 (local-voice-loop) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-23 -- Phase 01 planning complete
+Last activity: 2026-06-23
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01 P01 | 35 | 4 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,9 @@ Recent decisions affecting current work:
 - [Roadmap]: Streaming at every stage (Deepgram streaming → Claude streaming tokens → ElevenLabs streaming TTS) is non-negotiable from Phase 1 — retrofitting is a rewrite.
 - [Roadmap]: CalendarProvider, TransportFactory, TenantConfig, and NotificationChannel interface seams must be defined in Phase 1 so Phase 4 (Telnyx) and Phase 5 (multi-tenant) add files behind interfaces rather than restructuring code.
 - [Roadmap]: Phase 4 (Telnyx) carries a HIGH research flag — DTMF/codec reliability, warm-transfer Dial+Bridge, PSTN latency, and WebSocket-VAD starvation all need targeted review during planning.
+- [Phase ?]: [01-01]: Typed Pydantic TenantConfig + aiosqlite TenantRepository behind a Postgres-ready interface; demo tenant loads via parameterized WHERE id = ? (D-01/D-02/D-03).
+- [Phase ?]: [01-01]: voice_id and model fields have non-empty Pydantic validators (Pitfall 5) preventing silent wrong-voice / broken-LLM fallbacks.
+- [Phase ?]: [01-01]: Wave 0 pytest stubs use xfail(strict=False) referencing the owning plan; suite green now, Plans 02/03 enforce by removing the marker.
 
 ### Pending Todos
 
@@ -82,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-23T12:38:33.046Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-local-voice-loop/01-CONTEXT.md
+Last session: 2026-06-23T21:14:08.313Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
