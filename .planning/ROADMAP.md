@@ -31,7 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The per-stage latency log (STT-final, LLM TTFT, TTS TTFB, transport) shows each stage is within budget and the end-to-end turn is under 800ms on a clean local connection.
   4. When STT, LLM, or TTS returns an error or times out, the bot speaks a courtesy phrase in Italian instead of going silent.
   5. The repo includes `.env.example` with placeholder keys and step-by-step account-creation instructions; cloning and filling `.env` is sufficient to run the project.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Env + scaffold + pytest stubs + tenant config (SQLite) + interface seams + .env.example (SETUP-01)
+- [ ] 01-02-PLAN.md — Streaming pipeline + greeting-first + barge-in, run via `python main.py --tenant=demo` (VOICE-01/02/03/05)
+- [ ] 01-03-PLAN.md — Per-stage latency log (console + JSONL) + courtesy-phrase fallback (VOICE-04, REL-01)
 
 ### Phase 2: Booking + Calendar + FAQ
 **Goal**: A caller can complete a full reservation by voice in Italian — supplying date, time, party size, name, and phone number — and the booking appears in the real Google Calendar for the correct client only after the caller verbally confirms the read-back, and only if the slot is within capacity.
@@ -93,7 +97,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Local Voice Loop | 0/TBD | Not started | - |
+| 1. Local Voice Loop | 0/3 | Planned | - |
 | 2. Booking + Calendar + FAQ | 0/TBD | Not started | - |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
