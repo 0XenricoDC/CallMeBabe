@@ -726,27 +726,33 @@ DEMO_VOICE_ID=ErXwobaYiN019PkySvjV
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four items below are framework-API/empirical uncertainties, not planning blockers. Each is resolved with a concrete default plus a Wave 0 in-task verification step (written into the corresponding plan task actions). None gate planning.
 
 1. **`BaseObserver.on_turn_ended` — does it exist?**
    - What we know: `BaseObserver` has `on_push_frame`, `on_process_frame`, `on_pipeline_started`.
    - What's unclear: Whether there is a dedicated "turn ended" hook or if this must be inferred from `BotStoppedSpeakingFrame` in `on_push_frame`.
    - Recommendation: In Wave 0, add a debug observer that prints all frame types flowing through; identify the right hook. Fall back to intercepting `BotStoppedSpeakingFrame` if needed.
+   - **RESOLVED:** Use `BotStoppedSpeakingFrame` detection in `on_push_frame` as the primary turn-end signal; verify/swap to a dedicated `TurnTrackingObserver` hook during Wave 0 (Plan 01-03 Task 1 debug-observer step). Latency observer does not block on this — both paths emit the same per-turn line.
 
 2. **`worker.queue_frames()` exact API on `PipelineWorker`**
    - What we know: `PipelineTask.queue_frames()` existed in 0.0.x. `PipelineWorker` is the 1.x replacement.
    - What's unclear: Whether `PipelineWorker` exposes the same `queue_frames()` method or uses a different approach (e.g., via the bus).
    - Recommendation: Check `reference-server.pipecat.ai/en/stable/api/pipecat.pipeline.worker.html` during Wave 0 task.
+   - **RESOLVED:** Use `worker.queue_frames()` for the greeting `TTSSpeakFrame`; if the method name differs in 1.4.0, fall back to pipeline-bus injection. Verified in Plan 01-02 Task 2 before reliance (flagged `[ASSUMED]` in the task action).
 
 3. **nova-3 Italian status at implementation time**
    - What we know: As of 2026-06-23, nova-3 supports Italian with better WER than nova-2 (verified via Deepgram docs). CLAUDE.md locks to nova-2.
    - What's unclear: Whether the project owner wants to use nova-3 given the verified improvement.
    - Recommendation: Planner should create a task to swap `model="nova-2"` → `model="nova-3"` as an explicit upgrade task. It is a one-line change.
+   - **RESOLVED:** Honor the CLAUDE.md `nova-2` lock for Phase 1. The nova-3 Italian improvement is surfaced as a config comment in `factory.py` (`# nova-3 now supports Italian with lower WER — owner may opt in`), no code gate. Owner decides in a later phase.
 
 4. **ElevenLabs voice_id for demo tenant**
    - What we know: The `.env.example` needs a real voice_id; ElevenLabs pre-made Italian voices exist.
    - What's unclear: Which specific Italian voice to use as the demo default.
    - Recommendation: Use "Antoni" (ElevenLabs pre-made Italian-capable male voice) or "Serena" for female. Owner should validate voice quality.
+   - **RESOLVED:** Use a `DEMO_VOICE_ID` env var in `.env.example` with a documented pre-made Italian-capable default; owner validates voice quality during the Plan 01-02/01-03 live-smoke checkpoint before Phase 2.
 
 ---
 
