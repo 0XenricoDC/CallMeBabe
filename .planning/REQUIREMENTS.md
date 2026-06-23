@@ -118,13 +118,51 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (popolata dal roadmapper) | — | Pending |
+| VOICE-01 | Phase 1 | Pending |
+| VOICE-02 | Phase 1 | Pending |
+| VOICE-03 | Phase 1 | Pending |
+| VOICE-04 | Phase 1 | Pending |
+| VOICE-05 | Phase 1 | Pending |
+| REL-01 | Phase 1 | Pending |
+| SETUP-01 | Phase 1 | Pending |
+| BOOK-01 | Phase 2 | Pending |
+| BOOK-02 | Phase 2 | Pending |
+| BOOK-03 | Phase 2 | Pending |
+| BOOK-04 | Phase 2 | Pending |
+| BOOK-05 | Phase 2 | Pending |
+| BOOK-06 | Phase 2 | Pending |
+| FAQ-01 | Phase 2 | Pending |
+| FAQ-02 | Phase 2 | Pending |
+| FAQ-03 | Phase 2 | Pending |
+| HAND-01 | Phase 3 | Pending |
+| HAND-02 | Phase 3 | Pending |
+| HAND-03 | Phase 3 | Pending |
+| HAND-04 | Phase 3 | Pending |
+| NOTIF-01 | Phase 3 | Pending |
+| NOTIF-02 | Phase 3 | Pending |
+| NOTIF-03 | Phase 3 | Pending |
+| NOTIF-04 | Phase 3 | Pending |
+| NOTIF-05 | Phase 3 | Pending |
+| REL-02 | Phase 3 | Pending |
+| REL-03 | Phase 3 | Pending |
+| REL-04 | Phase 3 | Pending |
+| TEL-01 | Phase 4 | Pending |
+| TEL-02 | Phase 4 | Pending |
+| TEL-03 | Phase 4 | Pending |
+| TEL-04 | Phase 4 | Pending |
+| TEL-05 | Phase 4 | Pending |
+| TENANT-01 | Phase 5 | Pending |
+| TENANT-02 | Phase 5 | Pending |
+| TENANT-03 | Phase 5 | Pending |
+| TENANT-04 | Phase 5 | Pending |
+| TENANT-05 | Phase 5 | Pending |
+| TENANT-06 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 0 (in attesa del roadmapper)
-- Unmapped: 38 ⚠️
+- v1 requirements: 39 total
+- Mapped to phases: 39/39 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-23*
-*Last updated: 2026-06-23 after initial definition*
+*Last updated: 2026-06-23 after roadmap creation — all 39 v1 requirements mapped*
