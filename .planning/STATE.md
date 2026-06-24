@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md (live smoke approved; UTF-8 Windows fix applied)
-last_updated: "2026-06-24T12:50:24.367Z"
+stopped_at: 01-03 Tasks 1-3 complete; awaiting human-verify Task 4 (live latency + courtesy phrase)
+last_updated: "2026-06-24T21:15:00.000Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 5
@@ -74,6 +74,9 @@ Recent decisions affecting current work:
 - [Phase 1]: [01-02]: user_turn_stop_timeout=0.2s, VAD stop_secs=0.3s — both explicitly set; default 5s would blow 800ms budget (Pitfall 1).
 - [Phase ?]: [01-02]: bot() loads TenantConfig + queues Italian greeting on connect via make_greeting_handler factory; barge-in active during greeting (D-11). Live smoke approved by user.
 - [Phase ?]: [01-02]: Windows UTF-8 stdout fix in main.py — pipecat runner emoji banner crashes cp1252 consoles; sys.stdout/stderr.reconfigure(utf-8) enables clone-and-run without PYTHONUTF8=1.
+- [Phase 1]: [01-03]: LatencyObserver uses BotStoppedSpeakingFrame as turn-end signal (Open Question 1 resolved); data.source is FrameProcessor object, route by .name substring.
+- [Phase 1]: [01-03]: ErrorFallbackObserver circular dependency with PipelineWorker resolved by constructing with worker=None then patching .worker after worker creation.
+- [Phase 1]: [01-03]: V7 enforced — ErrorFrame.error string never printed/logged in fallback.py; only sanitized source.name used.
 
 ### Pending Todos
 
