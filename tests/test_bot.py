@@ -23,11 +23,10 @@ async def test_greeting_injected(tenant: TenantConfig):
     """VOICE-02 / D-11: on_client_connected queues a TTSSpeakFrame with tenant greeting.
 
     The test:
-    1. Patches build_pipeline and TenantRepository so no real I/O occurs.
-    2. Patches PipelineWorker to capture queue_frames calls.
-    3. Patches WorkerRunner so run() returns immediately.
-    4. Calls bot() with a fake SmallWebRTCRunnerArguments whose cli_args.tenant == "demo".
-    5. Asserts that queue_frames was called with a TTSSpeakFrame whose text == tenant.greeting.
+    1. Imports make_greeting_handler from src.bot (the testable unit).
+    2. Calls make_greeting_handler(worker, tenant) to get the coroutine handler.
+    3. Invokes the handler directly (simulating a client connect event).
+    4. Asserts queue_frames was called with a TTSSpeakFrame whose text == tenant.greeting.
     """
     from pipecat.frames.frames import TTSSpeakFrame
 
@@ -41,50 +40,19 @@ async def test_greeting_injected(tenant: TenantConfig):
 
     mock_worker.queue_frames = _queue_frames
 
-    # --- Fake runner (returns immediately) ---
-    mock_runner = MagicMock(name="MockWorkerRunner")
-    mock_runner.add_workers = AsyncMock()
-    mock_runner.run = AsyncMock()
+    # --- Invoke the greeting handler factory ---
+    from src.bot import make_greeting_handler
 
-    # --- Fake runner_args ---
-    import argparse
-    from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
-    from pipecat.runner.types import SmallWebRTCRunnerArguments
+    handler = make_greeting_handler(mock_worker, tenant)
 
-    cli_args = argparse.Namespace(tenant="demo")
-    mock_webrtc_conn = MagicMock(name="WebRTCConnection")
-    # cli_args is on the parent RunnerArguments base class; set it as an attribute
-    # after construction (this is how the runner sets it before calling bot()).
-    runner_args = SmallWebRTCRunnerArguments(webrtc_connection=mock_webrtc_conn)
-    runner_args.cli_args = cli_args
-
-    # --- Mock pipeline build (no real services) ---
-    mock_pipeline = MagicMock(name="MockPipeline")
-    from pipecat.processors.aggregators.llm_context import LLMContext
-    mock_context = MagicMock(spec=LLMContext, name="MockContext")
-
-    with (
-        patch("src.bot.TransportFactory") as MockTransportFactory,
-        patch("src.bot.TenantRepository") as MockRepo,
-        patch("src.bot.build_pipeline", return_value=(mock_pipeline, mock_context)),
-        patch("src.bot.PipelineWorker", return_value=mock_worker),
-        patch("src.bot.WorkerRunner", return_value=mock_runner),
-    ):
-        # Make TransportFactory.create_webrtc_transport return a mock transport
-        mock_transport = MagicMock(name="MockTransport")
-        MockTransportFactory.return_value.create_webrtc_transport.return_value = mock_transport
-
-        # Make TenantRepository().get_tenant("demo") return our test tenant
-        mock_repo_instance = AsyncMock()
-        mock_repo_instance.get_tenant.return_value = tenant
-        MockRepo.return_value = mock_repo_instance
-
-        from src.bot import bot
-        await bot(runner_args)
+    # Simulate the on_client_connected event: handler receives (transport, client)
+    mock_transport = MagicMock(name="MockTransport")
+    mock_client = MagicMock(name="MockWebRTCClient")
+    await handler(mock_transport, mock_client)
 
     # Assert queue_frames was called at least once
     assert queued_frames, (
-        "queue_frames was never called — on_client_connected must queue a TTSSpeakFrame"
+        "queue_frames was never called — make_greeting_handler must queue a TTSSpeakFrame"
     )
 
     # Find the TTSSpeakFrame with the greeting text
