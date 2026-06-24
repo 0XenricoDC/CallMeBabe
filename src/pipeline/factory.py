@@ -146,14 +146,21 @@ def build_tts_service(tenant: TenantConfig) -> ElevenLabsTTSService:
 
     Security (T-02-KEY): API key via env only; voice_id from validated TenantConfig.
     """
-    # CLAUDE.md / Pitfall: must use a multilingual model with language="it".
-    # Non-multilingual models silently ignore the language parameter.
+    # Model: eleven_turbo_v2_5 (CLAUDE.md lists it as a valid multilingual alternative
+    # that trades a little quality for lower latency — good for the <800ms budget).
+    # CRITICAL: in pipecat 1.4.0 the Italian `language` code is ONLY applied for models
+    # in ELEVENLABS_MULTILINGUAL_MODELS == {eleven_flash_v2_5, eleven_turbo_v2_5}.
+    # The previous default eleven_multilingual_v2 is NOT in that set, so pipecat logged
+    #   "Language code [it] not applied. Language codes can only be used with
+    #    multilingual models: eleven_flash_v2_5, eleven_turbo_v2_5"
+    # and silently ignored the Italian language. turbo_v2_5 honors Language.IT and the
+    # warning disappears (verified against pipecat/services/elevenlabs/tts.py).
     return ElevenLabsTTSService(
         api_key=os.getenv("ELEVENLABS_API_KEY"),
         settings=ElevenLabsTTSService.Settings(
             voice=tenant.voice_id,
-            model="eleven_multilingual_v2",
-            language="it",
+            model="eleven_turbo_v2_5",
+            language=Language.IT,
             stability=0.5,
             similarity_boost=0.75,
             speed=1.0,

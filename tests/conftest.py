@@ -63,6 +63,6 @@ def mock_tts(tenant) -> MagicMock:
     """Placeholder TTS service (Plan 02 wires the real ElevenLabsTTSService)."""
     m = MagicMock(name="MockTTSService")
     m.voice = tenant.voice_id
-    m.model = "eleven_multilingual_v2"
+    m.model = "eleven_turbo_v2_5"
     m.language = "it"
     return m

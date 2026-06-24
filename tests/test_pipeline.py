@@ -115,7 +115,7 @@ def test_aggregator_timeout():
 
 
 # ---------------------------------------------------------------------------
-# VOICE-05: ElevenLabsTTSService uses per-tenant voice_id + eleven_multilingual_v2
+# VOICE-05: ElevenLabsTTSService uses per-tenant voice_id + eleven_turbo_v2_5
 # ---------------------------------------------------------------------------
 
 def test_tts_voice_id(tenant: TenantConfig):
@@ -149,7 +149,15 @@ def test_tts_voice_id(tenant: TenantConfig):
     assert settings.voice == tenant.voice_id, (
         f"TTS voice must equal tenant.voice_id ({tenant.voice_id!r}); got {settings.voice!r}"
     )
-    assert settings.model == "eleven_multilingual_v2", (
-        f"TTS model must be 'eleven_multilingual_v2'; got {settings.model!r}. "
-        "Non-multilingual models silently ignore language=it (CLAUDE.md / Pitfall)."
+    assert settings.model == "eleven_turbo_v2_5", (
+        f"TTS model must be 'eleven_turbo_v2_5'; got {settings.model!r}. "
+        "Only eleven_flash_v2_5 / eleven_turbo_v2_5 honor the language code in "
+        "pipecat 1.4.0 (ELEVENLABS_MULTILINGUAL_MODELS); the old eleven_multilingual_v2 "
+        "silently ignores language=it and logs a warning."
+    )
+    # The Italian language code must be applied (resolves to 'it').
+    lang = settings.language
+    lang_value = getattr(lang, "value", lang)
+    assert lang_value == "it", (
+        f"TTS language must resolve to Italian ('it'); got {lang!r}."
     )
