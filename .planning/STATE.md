@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-06-23T21:14:08.333Z"
+stopped_at: "01-02-PLAN.md Tasks 1-2 complete; Task 3 = live smoke checkpoint awaiting user"
+last_updated: "2026-06-24T08:45:00.000Z"
 last_activity: 2026-06-23
 progress:
   total_phases: 5
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 Phase: 01 (local-voice-loop) — EXECUTING
 Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-06-23
+Status: Awaiting Task 3 live-smoke checkpoint (human-verify)
+Last activity: 2026-06-24
 
 Progress: [███░░░░░░░] 33%
 
@@ -68,6 +68,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [01-01]: Typed Pydantic TenantConfig + aiosqlite TenantRepository behind a Postgres-ready interface; demo tenant loads via parameterized WHERE id = ? (D-01/D-02/D-03).
 - [Phase ?]: [01-01]: voice_id and model fields have non-empty Pydantic validators (Pitfall 5) preventing silent wrong-voice / broken-LLM fallbacks.
 - [Phase ?]: [01-01]: Wave 0 pytest stubs use xfail(strict=False) referencing the owning plan; suite green now, Plans 02/03 enforce by removing the marker.
+- [Phase 1]: [01-02]: SmallWebRTCTransport uses pipecat.transports.smallwebrtc.transport (not .network.small_webrtc); AnthropicLLMService from .anthropic.llm; ElevenLabsTTSService from .elevenlabs.tts — exact submodule paths verified in venv.
+- [Phase 1]: [01-02]: make_greeting_handler() factory pattern used so greeting handler is unit-testable without running the full runner lifecycle.
+- [Phase 1]: [01-02]: user_turn_stop_timeout=0.2s, VAD stop_secs=0.3s — both explicitly set; default 5s would blow 800ms budget (Pitfall 1).
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-23T21:14:08.313Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-06-24T08:45:00.000Z
+Stopped at: "01-02 Tasks 1-2 complete — awaiting Task 3 live smoke gate"
 Resume file: None
