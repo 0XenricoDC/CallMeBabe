@@ -85,25 +85,57 @@ def test_latency_observer(tmp_path):
     assert record["stt_ms"] == 180
     assert record["llm_ttft_ms"] == 240
     assert record["tts_ttfb_ms"] == 160
+    # D-06 response latency = sum of per-stage TTFB (the real <800ms budget metric).
+    assert record["response_ms"] == 180 + 240 + 160
     assert "ts" in record
 
 
 def test_latency_observer_warns_over_budget(tmp_path, capsys):
-    """VOICE-04 / D-06: LatencyObserver prints a [WARN] line when turn_ms > 800."""
+    """VOICE-04 / D-06: [WARN] fires when RESPONSE latency (sum of TTFB) > 800ms.
+
+    The budget is the response latency (stt + llm_ttft + tts_ttfb), NOT the total
+    turn duration (which always exceeds 800ms because it includes user speech).
+    """
     from src.pipeline.observers import LatencyObserver
 
     jsonl_path = str(tmp_path / "latency_warn.jsonl")
     observer = LatencyObserver(jsonl_path)
-
-    observer._flush_turn(turn_ms=950)
+    # Per-stage TTFB summing to 950ms (> 800ms budget).
+    observer._stt_ms = 300
+    observer._llm_ttft_ms = 450
+    observer._tts_ttfb_ms = 200
+    # turn_ms is large but must NOT itself trigger the warning.
+    observer._flush_turn(turn_ms=9000)
 
     captured = capsys.readouterr()
-    assert "[WARN]" in captured.out, "Expected [WARN] in stdout for over-budget turn"
+    assert "[WARN]" in captured.out, "Expected [WARN] for over-budget response latency"
     assert "800" in captured.out, "Warning must mention the 800ms budget"
+    assert "Response" in captured.out, "Warning must be about response latency, not turn"
+
+
+def test_latency_observer_no_warn_when_response_under_budget(tmp_path, capsys):
+    """D-06: a large turn_ms with sub-800ms response latency must NOT warn.
+
+    This is the core semantic fix: turn_ms includes user speaking time and is
+    routinely 8000-28000ms; that must not be flagged as over budget.
+    """
+    from src.pipeline.observers import LatencyObserver
+
+    jsonl_path = str(tmp_path / "latency_ok.jsonl")
+    observer = LatencyObserver(jsonl_path)
+    observer._stt_ms = 180
+    observer._llm_ttft_ms = 240
+    observer._tts_ttfb_ms = 160  # response = 580ms < 800
+    observer._flush_turn(turn_ms=12000)  # huge turn, but response is fine
+
+    captured = capsys.readouterr()
+    assert "[WARN]" not in captured.out, (
+        f"Sub-budget response must not warn despite large turn_ms; got: {captured.out!r}"
+    )
 
 
 def test_latency_observer_console_line(tmp_path, capsys):
-    """D-06: The console line matches `turn=...ms | stt=... llm_ttft=... tts_ttfb=...`."""
+    """D-06: console line shows response latency + per-stage + turn context."""
     from src.pipeline.observers import LatencyObserver
 
     jsonl_path = str(tmp_path / "latency_line.jsonl")
@@ -115,10 +147,11 @@ def test_latency_observer_console_line(tmp_path, capsys):
 
     captured = capsys.readouterr()
     line = captured.out.splitlines()[0]
-    assert "turn=620ms" in line
+    assert "response=580ms" in line  # 180+240+160
     assert "stt=180" in line
     assert "llm_ttft=240" in line
     assert "tts_ttfb=160" in line
+    assert "turn=620ms" in line
     assert "|" in line
 
 
@@ -183,7 +216,8 @@ def test_latency_observer_real_flow(tmp_path, capsys):
 
     # The line must have been printed AND the JSONL populated.
     captured = capsys.readouterr()
-    assert "turn=570ms" in captured.out, f"Expected live turn line, got: {captured.out!r}"
+    assert "response=570ms" in captured.out, f"Expected response line, got: {captured.out!r}"
+    assert "turn=570ms" in captured.out, f"Expected turn context, got: {captured.out!r}"
 
     assert os.path.exists(jsonl_path)
     lines = open(jsonl_path).read().strip().splitlines()
@@ -193,6 +227,8 @@ def test_latency_observer_real_flow(tmp_path, capsys):
     assert record["stt_ms"] == 150
     assert record["llm_ttft_ms"] == 300
     assert record["tts_ttfb_ms"] == 120
+    # response_ms = sum of per-stage TTFB (150+300+120 = 570, here equal to turn_ms by design)
+    assert record["response_ms"] == 570
 
 
 def test_latency_observer_survives_bad_frame(tmp_path):

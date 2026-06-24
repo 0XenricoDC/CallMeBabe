@@ -60,7 +60,13 @@ class LatencyObserver(BaseObserver):
     wired in bot.py via `register_turn_end(worker.turn_tracking_observer)`. The observer
     also exposes `_flush_turn()` directly so unit tests can exercise the output path.
 
-    JSONL schema: {ts, turn_ms, stt_ms, llm_ttft_ms, tts_ttfb_ms}  — timing integers only.
+    Budget semantics (D-06): the <800ms target is the RESPONSE latency = sum of the
+    per-stage TTFB (stt + llm_ttft + tts_ttfb), i.e. time from the user finishing to
+    the bot's first audio. `turn_ms` (full turn, incl. user speech) is logged as context
+    only and never triggers the warning.
+
+    JSONL schema: {ts, turn_ms, response_ms, stt_ms, llm_ttft_ms, tts_ttfb_ms}
+    — timing integers only.
     """
 
     def __init__(self, jsonl_path: str) -> None:
@@ -81,6 +87,14 @@ class LatencyObserver(BaseObserver):
         # De-dup MetricsFrames (the same frame can be observed on multiple hops)
         self._frames_seen: set[int] = set()
 
+        # --- TEMPORARY live diagnostics (LEAD: per-stage metrics all zero) ---
+        # Enabled via env LATENCY_DEBUG=1. Logs (loguru DEBUG, not print) every frame
+        # type, and for each MetricsFrame the metric type + processor + value, plus a
+        # call counter. Remove this block once routing is confirmed live.
+        self._debug = os.getenv("LATENCY_DEBUG", "") not in ("", "0", "false", "False")
+        self._push_calls = 0
+        self._metrics_frames_seen = 0
+
     async def on_push_frame(self, data: FramePushed) -> None:
         """Route MetricsFrames into per-stage buckets.
 
@@ -89,8 +103,34 @@ class LatencyObserver(BaseObserver):
         """
         try:
             frame = data.frame
+
+            # --- TEMPORARY live diagnostics (remove once routing confirmed) ---
+            if self._debug:
+                self._push_calls += 1
+                # Log a compact heartbeat every 50 frames so we confirm the observer
+                # is actually being invoked live, without flooding the console.
+                if self._push_calls % 50 == 1:
+                    logger.debug(
+                        f"[LATENCY_DEBUG] on_push_frame called {self._push_calls}x "
+                        f"(latest frame: {type(frame).__name__})"
+                    )
+
             if not isinstance(frame, MetricsFrame):
                 return
+
+            # --- TEMPORARY: dump every MetricsFrame's contents ---
+            if self._debug:
+                self._metrics_frames_seen += 1
+                items = getattr(frame, "data", None) or []
+                summary = [
+                    f"{type(m).__name__}(processor={getattr(m, 'processor', None)!r}, "
+                    f"value={getattr(m, 'value', None)!r})"
+                    for m in items
+                ]
+                logger.debug(
+                    f"[LATENCY_DEBUG] MetricsFrame #{self._metrics_frames_seen} "
+                    f"data={summary}"
+                )
 
             # De-dup: the same MetricsFrame may be pushed across multiple processors.
             frame_id = getattr(frame, "id", None)
@@ -111,6 +151,10 @@ class LatencyObserver(BaseObserver):
                 if value is None:
                     continue
                 val_ms = int(value * 1000)
+                if self._debug:
+                    logger.debug(
+                        f"[LATENCY_DEBUG] routing TTFB processor={proc!r} -> {val_ms}ms"
+                    )
                 # Order matters: check vendor names + the most specific service-type
                 # tokens FIRST. Note "ElevenLabsTTSService".lower() == "elevenlabsttsservice"
                 # which CONTAINS the substring "stt" (…lab[s+tts]ervice) — so a naive
@@ -158,20 +202,39 @@ class LatencyObserver(BaseObserver):
         Called by the `on_turn_ended` event handler at runtime and directly by unit
         tests (bypassing the async observer lifecycle) to exercise the output path.
 
+        Budget semantics (D-06): the <800ms target is the RESPONSE LATENCY — the time
+        from the user finishing to the bot's first audio — which is the sum of the
+        per-stage TTFB (stt + llm_ttft + tts_ttfb), NOT the total turn duration.
+        `turn_ms` includes the user's speaking time and so will always exceed 800ms;
+        we keep it as context but apply the over-budget warning to `response_ms`.
+
         Args:
-            turn_ms: Total turn duration in milliseconds.
+            turn_ms: Total turn duration in milliseconds (context only).
         """
+        response_ms = self._stt_ms + self._llm_ttft_ms + self._tts_ttfb_ms
+
+        if self._debug:
+            logger.debug(
+                f"[LATENCY_DEBUG] _flush_turn turn_ms={turn_ms} "
+                f"buckets stt={self._stt_ms} llm_ttft={self._llm_ttft_ms} "
+                f"tts_ttfb={self._tts_ttfb_ms} response_ms={response_ms} "
+                f"(metrics_frames_seen={self._metrics_frames_seen}, "
+                f"push_calls={self._push_calls})"
+            )
+
         line = (
-            f"turn={turn_ms}ms | "
+            f"response={response_ms}ms | "
             f"stt={self._stt_ms} "
             f"llm_ttft={self._llm_ttft_ms} "
-            f"tts_ttfb={self._tts_ttfb_ms}"
+            f"tts_ttfb={self._tts_ttfb_ms} "
+            f"(turn={turn_ms}ms)"
         )
         print(line)
 
         record = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "turn_ms": turn_ms,
+            "response_ms": response_ms,
             "stt_ms": self._stt_ms,
             "llm_ttft_ms": self._llm_ttft_ms,
             "tts_ttfb_ms": self._tts_ttfb_ms,
@@ -179,8 +242,12 @@ class LatencyObserver(BaseObserver):
         with open(self._jsonl_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
-        if turn_ms > LATENCY_BUDGET_MS:
-            print(f"  [WARN] Turn exceeded 800ms budget! ({turn_ms}ms > {LATENCY_BUDGET_MS}ms)")
+        # D-06: warn on RESPONSE latency over budget, not total turn duration.
+        if response_ms > LATENCY_BUDGET_MS:
+            print(
+                f"  [WARN] Response latency exceeded 800ms budget! "
+                f"({response_ms}ms > {LATENCY_BUDGET_MS}ms)"
+            )
 
         # Reset per-turn accumulators
         self._stt_ms = 0
