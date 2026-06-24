@@ -40,11 +40,11 @@ class _FakeFramePushed:
 def test_latency_observer(tmp_path):
     """VOICE-04 / D-06: LatencyObserver emits per-turn console line + JSONL record.
 
-    Feed synthetic MetricsFrames with TTFBMetricsData for STT, LLM, and TTS
-    sources, then call _flush_turn() (the turn-end path) and assert:
-      - A console line matching `turn=...ms | stt=... llm_ttft=... tts_ttfb=...`
-        was printed.
-      - A JSON record with the expected keys was appended to the JSONL file.
+    Feed synthetic MetricsFrames with TTFBMetricsData whose `.processor` carries
+    the REAL service names the live pipeline emits (DeepgramSTTService#0,
+    AnthropicLLMService#0, ElevenLabsTTSService#0), then call _flush_turn() and
+    assert routing + JSONL output. Routing is on `metric.processor`, not
+    `data.source.name` (the live-bug root cause).
     """
     from pipecat.frames.frames import MetricsFrame
     from pipecat.metrics.metrics import TTFBMetricsData
@@ -54,20 +54,18 @@ def test_latency_observer(tmp_path):
     jsonl_path = str(tmp_path / "latency.jsonl")
     observer = LatencyObserver(jsonl_path)
 
-    # Feed an STT TTFB metric (source name contains "deepgram")
-    stt_metric = TTFBMetricsData(processor="deepgram", value=0.180)
+    # Use the ACTUAL service processor names the live pipeline emits (verified).
+    stt_metric = TTFBMetricsData(processor="DeepgramSTTService#0", value=0.180)
     stt_frame = MetricsFrame(data=[stt_metric])
-    stt_push = _FakeFramePushed(source=_FakeProcessor("deepgram-stt"), frame=stt_frame)
+    stt_push = _FakeFramePushed(source=_FakeProcessor("DeepgramSTTService#0"), frame=stt_frame)
 
-    # Feed an LLM TTFB metric (source name contains "anthropic")
-    llm_metric = TTFBMetricsData(processor="anthropic", value=0.240)
+    llm_metric = TTFBMetricsData(processor="AnthropicLLMService#0", value=0.240)
     llm_frame = MetricsFrame(data=[llm_metric])
-    llm_push = _FakeFramePushed(source=_FakeProcessor("anthropic-llm"), frame=llm_frame)
+    llm_push = _FakeFramePushed(source=_FakeProcessor("AnthropicLLMService#0"), frame=llm_frame)
 
-    # Feed a TTS TTFB metric (source name contains "elevenlabs")
-    tts_metric = TTFBMetricsData(processor="elevenlabs", value=0.160)
+    tts_metric = TTFBMetricsData(processor="ElevenLabsTTSService#0", value=0.160)
     tts_frame = MetricsFrame(data=[tts_metric])
-    tts_push = _FakeFramePushed(source=_FakeProcessor("elevenlabs-tts"), frame=tts_frame)
+    tts_push = _FakeFramePushed(source=_FakeProcessor("ElevenLabsTTSService#0"), frame=tts_frame)
 
     async def _run():
         await observer.on_push_frame(stt_push)
@@ -122,6 +120,116 @@ def test_latency_observer_console_line(tmp_path, capsys):
     assert "llm_ttft=240" in line
     assert "tts_ttfb=160" in line
     assert "|" in line
+
+
+class _FakeTurnTrackingObserver:
+    """Minimal stand-in for pipecat's TurnTrackingObserver.
+
+    Captures the handler registered via `event_handler("on_turn_ended")` and lets
+    the test fire it, exactly as the real observer does at the end of a turn.
+    """
+
+    def __init__(self):
+        self._handlers = {}
+
+    def event_handler(self, name):
+        def decorator(fn):
+            self._handlers[name] = fn
+            return fn
+
+        return decorator
+
+    async def fire(self, name, *args):
+        await self._handlers[name](self, *args)
+
+
+def test_latency_observer_real_flow(tmp_path, capsys):
+    """REGRESSION (live bug): the full real flow must emit a line + JSONL.
+
+    Reproduces the live integration the unit tests previously missed:
+      1. MetricsFrames routed by `metric.processor` (real service names).
+      2. Turn end driven by TurnTrackingObserver's `on_turn_ended` event (NOT by a
+         raw frame inside on_push_frame), wired via `register_turn_end`.
+
+    The previous implementation never reached `_flush_turn` live; this test fails
+    against that version and passes against the fixed one.
+    """
+    from pipecat.frames.frames import MetricsFrame
+    from pipecat.metrics.metrics import TTFBMetricsData
+
+    from src.pipeline.observers import LatencyObserver
+
+    jsonl_path = str(tmp_path / "latency_real.jsonl")
+    observer = LatencyObserver(jsonl_path)
+
+    turn_tracker = _FakeTurnTrackingObserver()
+    observer.register_turn_end(turn_tracker)
+
+    def _metrics_push(processor, value):
+        metric = TTFBMetricsData(processor=processor, value=value)
+        frame = MetricsFrame(data=[metric])
+        return _FakeFramePushed(source=_FakeProcessor("some-downstream-processor"), frame=frame)
+
+    async def _run():
+        # Metrics arrive during the turn (note: source name is a DOWNSTREAM processor,
+        # proving routing must use metric.processor, not data.source.name).
+        await observer.on_push_frame(_metrics_push("DeepgramSTTService#0", 0.150))
+        await observer.on_push_frame(_metrics_push("AnthropicLLMService#0", 0.300))
+        await observer.on_push_frame(_metrics_push("ElevenLabsTTSService#0", 0.120))
+        # Turn ends — TurnTrackingObserver fires on_turn_ended(turn, duration_secs, interrupted)
+        await turn_tracker.fire("on_turn_ended", 1, 0.570, False)
+
+    asyncio.run(_run())
+
+    # The line must have been printed AND the JSONL populated.
+    captured = capsys.readouterr()
+    assert "turn=570ms" in captured.out, f"Expected live turn line, got: {captured.out!r}"
+
+    assert os.path.exists(jsonl_path)
+    lines = open(jsonl_path).read().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["turn_ms"] == 570
+    assert record["stt_ms"] == 150
+    assert record["llm_ttft_ms"] == 300
+    assert record["tts_ttfb_ms"] == 120
+
+
+def test_latency_observer_survives_bad_frame(tmp_path):
+    """REGRESSION (live bug, LEAD 1): on_push_frame must NOT raise on a malformed frame.
+
+    The WorkerObserver proxy has no try/except around on_push_frame; an exception
+    would kill the observer for the whole session. A MetricsFrame whose `data` is
+    None (or a metric missing fields) must be swallowed without raising, and a
+    subsequent valid frame must still be routed.
+    """
+    from pipecat.frames.frames import MetricsFrame
+    from pipecat.metrics.metrics import TTFBMetricsData
+
+    from src.pipeline.observers import LatencyObserver
+
+    jsonl_path = str(tmp_path / "latency_bad.jsonl")
+    observer = LatencyObserver(jsonl_path)
+
+    # A MetricsFrame with data=None would make `for metric in frame.data` raise.
+    bad_frame = MetricsFrame(data=None)  # type: ignore[arg-type]
+    bad_push = _FakeFramePushed(source=_FakeProcessor("x"), frame=bad_frame)
+
+    good_metric = TTFBMetricsData(processor="DeepgramSTTService#0", value=0.200)
+    good_frame = MetricsFrame(data=[good_metric])
+    good_push = _FakeFramePushed(source=_FakeProcessor("x"), frame=good_frame)
+
+    async def _run():
+        # Must not raise.
+        await observer.on_push_frame(bad_push)
+        # Observer must still be functional afterwards.
+        await observer.on_push_frame(good_push)
+        observer._flush_turn(turn_ms=400)
+
+    asyncio.run(_run())
+
+    record = json.loads(open(jsonl_path).read().strip().splitlines()[0])
+    assert record["stt_ms"] == 200, "Observer must keep routing after a malformed frame"
 
 
 # ---------------------------------------------------------------------------

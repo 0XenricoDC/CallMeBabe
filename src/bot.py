@@ -117,6 +117,14 @@ async def bot(runner_args: RunnerArguments) -> None:
     # Resolve the circular reference now that `worker` exists.
     error_observer.worker = worker
 
+    # D-06 turn-end wiring: the LatencyObserver emits its per-turn line + JSONL when
+    # the pipeline's built-in TurnTrackingObserver fires `on_turn_ended`. That observer
+    # is created automatically by the worker (enable_turn_tracking defaults to True) and
+    # exposed as `worker.turn_tracking_observer`. Registering here — rather than inferring
+    # turn end from a raw frame inside on_push_frame — is the reliable signal that survives
+    # barge-in/interruptions and was the fix for the live "no latency line" bug.
+    latency_observer.register_turn_end(worker.turn_tracking_observer)
+
     # D-11: register the greeting handler BEFORE the runner starts so the event
     # fires as soon as the transport reports the client as connected.
     # Pitfall 7 guard: the handler uses worker.queue_frames (not direct push) so
