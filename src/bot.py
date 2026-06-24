@@ -8,12 +8,15 @@ This module:
   4. Assembles the streaming pipeline via build_pipeline() (VOICE-01).
   5. Registers on_client_connected to queue the Italian greeting (VOICE-02 / D-11).
   6. Runs the PipelineWorker via WorkerRunner.
+  7. Attaches LatencyObserver and ErrorFallbackObserver via PipelineParams (Plan 03).
 
 Security (T-02-KEY): API keys are never logged or echoed; tenant_id comes from a
 validated CLI arg and is passed to the parameterized repository query (Plan 01-01).
 """
 
 from __future__ import annotations
+
+import os
 
 from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -24,6 +27,11 @@ from src.config.repository import TenantRepository
 from src.config.tenant_config import TenantConfig
 from src.pipeline.build import build_pipeline
 from src.pipeline.factory import TransportFactory
+from src.pipeline.fallback import ErrorFallbackObserver
+from src.pipeline.observers import LatencyObserver
+
+# Default JSONL log path (D-06); the observer's __init__ creates the dir if absent.
+_LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
 
 
 def make_greeting_handler(worker: PipelineWorker, tenant: TenantConfig):
@@ -89,14 +97,25 @@ async def bot(runner_args: RunnerArguments) -> None:
     # Assemble the streaming pipeline (VOICE-01).
     pipeline, context = build_pipeline(transport, tenant)
 
-    # Create the worker with metrics enabled (D-06 preparation; observers added in Plan 03).
+    # Plan 03 (D-06 / REL-01): build the observers before the worker.
+    # ErrorFallbackObserver needs a worker reference to queue frames; we resolve the
+    # circular dependency by constructing it with a placeholder (None) and patching
+    # the .worker attribute immediately after the worker is created.
+    latency_observer = LatencyObserver(_LATENCY_LOG_PATH)
+    error_observer = ErrorFallbackObserver(worker=None)  # patched below
+
+    # Create the worker with metrics enabled and observers attached (D-06 / Plan 03).
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
+            observers=[latency_observer, error_observer],
         ),
     )
+
+    # Resolve the circular reference now that `worker` exists.
+    error_observer.worker = worker
 
     # D-11: register the greeting handler BEFORE the runner starts so the event
     # fires as soon as the transport reports the client as connected.
