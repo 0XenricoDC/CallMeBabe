@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: 01-03 Tasks 1-3 complete; awaiting human-verify Task 4 (live latency + courtesy phrase)
-last_updated: "2026-06-24T21:15:00.000Z"
+status: verifying
+stopped_at: Completed 01-03-PLAN.md (latency instrumentation + error fallback; live-verified). Phase 1 ready for verification.
+last_updated: "2026-06-24T20:51:19.740Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 1
-  percent: 0
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 Phase: 01 (local-voice-loop) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-24
 
-Progress: [███░░░░░░░] 33%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [███░░░░░░░] 33%
 *Updated after each plan completion*
 | Phase 01 P01 | 35 | 4 tasks | 18 files |
 | Phase 01 P02 | 6 | 2 tasks | 5 files |
+| Phase 01 P03 | 180 | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,10 @@ Recent decisions affecting current work:
 - [Phase 1]: [01-03]: LatencyObserver uses BotStoppedSpeakingFrame as turn-end signal (Open Question 1 resolved); data.source is FrameProcessor object, route by .name substring.
 - [Phase 1]: [01-03]: ErrorFallbackObserver circular dependency with PipelineWorker resolved by constructing with worker=None then patching .worker after worker creation.
 - [Phase 1]: [01-03]: V7 enforced — ErrorFrame.error string never printed/logged in fallback.py; only sanitized source.name used.
+- [Phase ?]: [01-03]: Custom observers attach via PipelineWorker(observers=[...]); PipelineParams has no observers field and silently drops the kwarg — root cause of both deliverables broken live.
+- [Phase ?]: [01-03]: Latency turn-end via built-in TurnTrackingObserver.on_turn_ended; metrics routed on metric.processor (TTS-first to avoid 'stt' inside 'ElevenLabsTTSService'); budget = response_ms (stt+llm_ttft+tts_ttfb), not total turn_ms.
+- [Phase ?]: [01-03]: TTS switched to eleven_turbo_v2_5 + Language.IT — only flash/turbo v2_5 honor the language code in pipecat 1.4.0; eliminates the ignored-language warning.
+- [Phase ?]: [01-03]: UAT (future optimisation, out of scope): live response latency ~1.7s warm / ~3.3s cold, dominated by Claude TTFT + STT, over the 800ms budget; Anthropic prompt caching not active (cache_read=0).
 
 ### Pending Todos
 
@@ -95,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-24T12:50:24.340Z
-Stopped at: Completed 01-02-PLAN.md (live smoke approved; UTF-8 Windows fix applied)
+Last session: 2026-06-24T20:51:19.714Z
+Stopped at: Completed 01-03-PLAN.md (latency instrumentation + error fallback; live-verified). Phase 1 ready for verification.
 Resume file: None

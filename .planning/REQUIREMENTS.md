@@ -12,7 +12,7 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 - [x] **VOICE-01**: Il bot conversa in italiano naturale in locale (microfono/cuffie) attraverso una pipeline streaming Deepgram (STT) → Claude (LLM) → ElevenLabs (TTS)
 - [x] **VOICE-02**: Il bot apre la conversazione con un saluto personalizzato preso dalla config del cliente
 - [x] **VOICE-03**: Il chiamante può interrompere il bot mentre parla (barge-in) e il bot smette di parlare e ascolta
-- [ ] **VOICE-04**: La latenza percepita per turno è sotto la soglia target (<800ms end-to-end) con strumentazione per-stage
+- [x] **VOICE-04**: La latenza percepita per turno è sotto la soglia target (<800ms end-to-end) con strumentazione per-stage
 - [x] **VOICE-05**: La voce TTS usata è quella configurata per il cliente (`voice_id` ElevenLabs), predisposta per voice cloning
 
 ### Prenotazioni (Booking)
@@ -47,7 +47,7 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 
 ### Affidabilità e fallback (Reliability)
 
-- [ ] **REL-01**: Se STT/LLM/TTS falliscono durante la chiamata, il bot pronuncia frasi di cortesia anziché lasciare dead-air
+- [x] **REL-01**: Se STT/LLM/TTS falliscono durante la chiamata, il bot pronuncia frasi di cortesia anziché lasciare dead-air
 - [ ] **REL-02**: In caso di guasto persistente di un provider, il bot offre/effettua il trasferimento all'operatore
 - [ ] **REL-03**: È predisposto un fallback STT self-hosted (faster-whisper) attivabile in alternativa a Deepgram
 - [ ] **REL-04**: Un watchdog rileva il dead-air / silenzio anomalo e innesca la strategia di recupero
@@ -121,9 +121,9 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 | VOICE-01 | Phase 1 | Complete |
 | VOICE-02 | Phase 1 | Complete |
 | VOICE-03 | Phase 1 | Complete |
-| VOICE-04 | Phase 1 | Pending |
+| VOICE-04 | Phase 1 | Complete |
 | VOICE-05 | Phase 1 | Complete |
-| REL-01 | Phase 1 | Pending |
+| REL-01 | Phase 1 | Complete |
 | SETUP-01 | Phase 1 | Complete |
 | BOOK-01 | Phase 2 | Pending |
 | BOOK-02 | Phase 2 | Pending |
