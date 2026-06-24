@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "01-02-PLAN.md Tasks 1-2 complete; Task 3 = live smoke checkpoint awaiting user"
-last_updated: "2026-06-24T08:45:00.000Z"
-last_activity: 2026-06-23
+stopped_at: Completed 01-02-PLAN.md (live smoke approved; UTF-8 Windows fix applied)
+last_updated: "2026-06-24T12:50:24.367Z"
+last_activity: 2026-06-24
 progress:
   total_phases: 5
   completed_phases: 0
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 01 (local-voice-loop) — EXECUTING
-Plan: 2 of 3
-Status: Awaiting Task 3 live-smoke checkpoint (human-verify)
+Plan: 3 of 3
+Status: Ready to execute
 Last activity: 2026-06-24
 
 Progress: [███░░░░░░░] 33%
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 35 | 4 tasks | 18 files |
+| Phase 01 P02 | 6 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 1]: [01-02]: SmallWebRTCTransport uses pipecat.transports.smallwebrtc.transport (not .network.small_webrtc); AnthropicLLMService from .anthropic.llm; ElevenLabsTTSService from .elevenlabs.tts — exact submodule paths verified in venv.
 - [Phase 1]: [01-02]: make_greeting_handler() factory pattern used so greeting handler is unit-testable without running the full runner lifecycle.
 - [Phase 1]: [01-02]: user_turn_stop_timeout=0.2s, VAD stop_secs=0.3s — both explicitly set; default 5s would blow 800ms budget (Pitfall 1).
+- [Phase ?]: [01-02]: bot() loads TenantConfig + queues Italian greeting on connect via make_greeting_handler factory; barge-in active during greeting (D-11). Live smoke approved by user.
+- [Phase ?]: [01-02]: Windows UTF-8 stdout fix in main.py — pipecat runner emoji banner crashes cp1252 consoles; sys.stdout/stderr.reconfigure(utf-8) enables clone-and-run without PYTHONUTF8=1.
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-24T08:45:00.000Z
-Stopped at: "01-02 Tasks 1-2 complete — awaiting Task 3 live smoke gate"
+Last session: 2026-06-24T12:50:24.340Z
+Stopped at: Completed 01-02-PLAN.md (live smoke approved; UTF-8 Windows fix applied)
 Resume file: None

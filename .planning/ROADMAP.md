@@ -43,7 +43,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Streaming pipeline + greeting-first + barge-in, run via `python main.py --tenant=demo` (VOICE-01/02/03/05)
+- [x] 01-02-PLAN.md — Streaming pipeline + greeting-first + barge-in, run via `python main.py --tenant=demo` (VOICE-01/02/03/05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -121,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Local Voice Loop | 1/3 | In Progress|  |
+| 1. Local Voice Loop | 2/3 | In Progress|  |
 | 2. Booking + Calendar + FAQ | 0/TBD | Not started | - |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |

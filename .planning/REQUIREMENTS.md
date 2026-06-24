@@ -9,11 +9,11 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 
 ### Conversazione vocale (Voice)
 
-- [ ] **VOICE-01**: Il bot conversa in italiano naturale in locale (microfono/cuffie) attraverso una pipeline streaming Deepgram (STT) → Claude (LLM) → ElevenLabs (TTS)
-- [ ] **VOICE-02**: Il bot apre la conversazione con un saluto personalizzato preso dalla config del cliente
-- [ ] **VOICE-03**: Il chiamante può interrompere il bot mentre parla (barge-in) e il bot smette di parlare e ascolta
+- [x] **VOICE-01**: Il bot conversa in italiano naturale in locale (microfono/cuffie) attraverso una pipeline streaming Deepgram (STT) → Claude (LLM) → ElevenLabs (TTS)
+- [x] **VOICE-02**: Il bot apre la conversazione con un saluto personalizzato preso dalla config del cliente
+- [x] **VOICE-03**: Il chiamante può interrompere il bot mentre parla (barge-in) e il bot smette di parlare e ascolta
 - [ ] **VOICE-04**: La latenza percepita per turno è sotto la soglia target (<800ms end-to-end) con strumentazione per-stage
-- [ ] **VOICE-05**: La voce TTS usata è quella configurata per il cliente (`voice_id` ElevenLabs), predisposta per voice cloning
+- [x] **VOICE-05**: La voce TTS usata è quella configurata per il cliente (`voice_id` ElevenLabs), predisposta per voice cloning
 
 ### Prenotazioni (Booking)
 
@@ -118,11 +118,11 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VOICE-01 | Phase 1 | Pending |
-| VOICE-02 | Phase 1 | Pending |
-| VOICE-03 | Phase 1 | Pending |
+| VOICE-01 | Phase 1 | Complete |
+| VOICE-02 | Phase 1 | Complete |
+| VOICE-03 | Phase 1 | Complete |
 | VOICE-04 | Phase 1 | Pending |
-| VOICE-05 | Phase 1 | Pending |
+| VOICE-05 | Phase 1 | Complete |
 | REL-01 | Phase 1 | Pending |
 | SETUP-01 | Phase 1 | Complete |
 | BOOK-01 | Phase 2 | Pending |
