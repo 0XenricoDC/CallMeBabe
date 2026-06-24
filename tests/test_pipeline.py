@@ -33,12 +33,13 @@ def _make_mock_transport():
 
 def test_pipeline_builds(tenant: TenantConfig):
     """VOICE-01: build_pipeline(transport, tenant) returns a Pipeline + LLMContext."""
-    # Patch all three external services so no network I/O happens.
+    # Patch external services at the point of import (factory.py and build.py)
+    # so no network I/O or missing-API-key errors occur.
     with (
-        patch("src.pipeline.build.DeepgramSTTService") as MockSTT,
+        patch("src.pipeline.factory.DeepgramSTTService") as MockSTT,
         patch("src.pipeline.build.AnthropicLLMService") as MockLLM,
-        patch("src.pipeline.build.ElevenLabsTTSService") as MockTTS,
-        patch("src.pipeline.build.SileroVADAnalyzer") as MockVAD,
+        patch("src.pipeline.factory.ElevenLabsTTSService") as MockTTS,
+        patch("src.pipeline.factory.SileroVADAnalyzer") as MockVAD,
         patch("src.pipeline.build.Pipeline") as MockPipeline,
         patch("src.pipeline.build.LLMContextAggregatorPair") as MockAggregators,
         patch("src.pipeline.build.LLMContext") as MockContext,
@@ -119,21 +120,32 @@ def test_aggregator_timeout():
 
 def test_tts_voice_id(tenant: TenantConfig):
     """VOICE-05: the TTS service uses voice_id from tenant config."""
+    from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
     from src.pipeline.factory import build_tts_service
 
-    with patch("src.pipeline.factory.ElevenLabsTTSService") as MockTTS:
-        mock_tts = MagicMock(name="TTSInstance")
-        MockTTS.return_value = mock_tts
+    # We mock the ElevenLabsTTSService constructor itself but keep the real
+    # Settings dataclass so we can inspect the settings object that was built.
+    real_Settings = ElevenLabsTTSService.Settings
+    captured: list = []
 
-        tts = build_tts_service(tenant)
+    def _mock_tts_init(self, **kwargs):
+        captured.append(kwargs)
 
-    assert tts is mock_tts
+    with patch.object(ElevenLabsTTSService, "__init__", _mock_tts_init):
+        # build_tts_service will construct a Settings(...) and pass it as kwarg
+        # The mock __init__ captures the kwargs but returns None (no network call).
+        try:
+            tts = build_tts_service(tenant)
+        except Exception:
+            pass  # __init__ returns None; attribute access after may raise
 
-    # Inspect the Settings object passed to ElevenLabsTTSService
-    MockTTS.assert_called_once()
-    _, kwargs = MockTTS.call_args
+    assert captured, "ElevenLabsTTSService.__init__ was not called"
+    kwargs = captured[0]
     settings = kwargs.get("settings")
-    assert settings is not None, "ElevenLabsTTSService must be called with settings="
+    assert settings is not None, "ElevenLabsTTSService must be called with settings= kwarg"
+    assert isinstance(settings, real_Settings), (
+        f"settings must be an ElevenLabsTTSService.Settings instance; got {type(settings)}"
+    )
     assert settings.voice == tenant.voice_id, (
         f"TTS voice must equal tenant.voice_id ({tenant.voice_id!r}); got {settings.voice!r}"
     )
