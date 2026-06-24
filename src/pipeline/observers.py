@@ -87,10 +87,10 @@ class LatencyObserver(BaseObserver):
         # De-dup MetricsFrames (the same frame can be observed on multiple hops)
         self._frames_seen: set[int] = set()
 
-        # --- TEMPORARY live diagnostics (LEAD: per-stage metrics all zero) ---
-        # Enabled via env LATENCY_DEBUG=1. Logs (loguru DEBUG, not print) every frame
-        # type, and for each MetricsFrame the metric type + processor + value, plus a
-        # call counter. Remove this block once routing is confirmed live.
+        # Opt-in diagnostics (env LATENCY_DEBUG=1): a single compact summary line is
+        # logged at _flush_turn with the per-turn frame counters. There is NO per-frame
+        # logging — that proved far too verbose live (hundreds of lines/turn). Default
+        # output (no LATENCY_DEBUG) is only the per-turn `response=...` line + [WARN].
         self._debug = os.getenv("LATENCY_DEBUG", "") not in ("", "0", "false", "False")
         self._push_calls = 0
         self._metrics_frames_seen = 0
@@ -104,33 +104,15 @@ class LatencyObserver(BaseObserver):
         try:
             frame = data.frame
 
-            # --- TEMPORARY live diagnostics (remove once routing confirmed) ---
+            # Cheap per-turn counters (used only in the LATENCY_DEBUG summary line).
             if self._debug:
                 self._push_calls += 1
-                # Log a compact heartbeat every 50 frames so we confirm the observer
-                # is actually being invoked live, without flooding the console.
-                if self._push_calls % 50 == 1:
-                    logger.debug(
-                        f"[LATENCY_DEBUG] on_push_frame called {self._push_calls}x "
-                        f"(latest frame: {type(frame).__name__})"
-                    )
 
             if not isinstance(frame, MetricsFrame):
                 return
 
-            # --- TEMPORARY: dump every MetricsFrame's contents ---
             if self._debug:
                 self._metrics_frames_seen += 1
-                items = getattr(frame, "data", None) or []
-                summary = [
-                    f"{type(m).__name__}(processor={getattr(m, 'processor', None)!r}, "
-                    f"value={getattr(m, 'value', None)!r})"
-                    for m in items
-                ]
-                logger.debug(
-                    f"[LATENCY_DEBUG] MetricsFrame #{self._metrics_frames_seen} "
-                    f"data={summary}"
-                )
 
             # De-dup: the same MetricsFrame may be pushed across multiple processors.
             frame_id = getattr(frame, "id", None)
@@ -151,10 +133,6 @@ class LatencyObserver(BaseObserver):
                 if value is None:
                     continue
                 val_ms = int(value * 1000)
-                if self._debug:
-                    logger.debug(
-                        f"[LATENCY_DEBUG] routing TTFB processor={proc!r} -> {val_ms}ms"
-                    )
                 # Order matters: check vendor names + the most specific service-type
                 # tokens FIRST. Note "ElevenLabsTTSService".lower() == "elevenlabsttsservice"
                 # which CONTAINS the substring "stt" (…lab[s+tts]ervice) — so a naive
