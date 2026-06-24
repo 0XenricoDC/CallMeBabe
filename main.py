@@ -21,6 +21,19 @@ API keys (D-12, T-02-KEY):
 from __future__ import annotations
 
 import argparse
+import sys
+
+# Windows runtime compat: Pipecat's runner prints emoji ("🚀 Bot ready!") in its
+# startup banner. Windows consoles default to the cp1252 codepage and raise
+# UnicodeEncodeError on those characters, crashing `python main.py` before the
+# server even starts. Force UTF-8 on stdout/stderr here — before any pipecat
+# import or print — so a clean Windows clone runs without PYTHONUTF8=1 (clone & run).
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
 from dotenv import load_dotenv
 
