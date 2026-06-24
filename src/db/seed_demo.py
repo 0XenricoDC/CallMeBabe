@@ -60,6 +60,14 @@ async def seed_demo_tenant(repo: TenantRepository) -> TenantConfig:
 
 
 async def _main() -> None:
+    # Load .env at run time (NOT import time) so the documented standalone command
+    # `python -m src.db.seed_demo` honors DEMO_VOICE_ID from .env. Doing this at
+    # import time would surprise tests that import build_demo_tenant() and expect
+    # the pure default when no env var is set.
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     repo = TenantRepository()
     await repo.init_db()
     tenant = await seed_demo_tenant(repo)
