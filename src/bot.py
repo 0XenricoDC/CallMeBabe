@@ -104,13 +104,21 @@ async def bot(runner_args: RunnerArguments) -> None:
     latency_observer = LatencyObserver(_LATENCY_LOG_PATH)
     error_observer = ErrorFallbackObserver(worker=None)  # patched below
 
-    # Create the worker with metrics enabled and observers attached (D-06 / Plan 03).
+    # CRITICAL (root-cause fix): custom observers must be passed via the dedicated
+    # `observers=` parameter of PipelineWorker, NOT inside PipelineParams.
+    # PipelineParams is a Pydantic model with NO `observers` field, so a previous
+    # `PipelineParams(observers=[...])` was silently dropped — our observers were never
+    # attached to the WorkerObserver proxy and on_push_frame never fired (push_calls=0),
+    # breaking BOTH latency capture (D-06) and the error-fallback courtesy phrase (REL-01).
+    # The worker's own turn_tracking_observer kept working because it is appended to the
+    # internal observers list directly by the worker, not via params. Verified against
+    # pipecat 1.4.0 PipelineWorker.__init__ signature (observers kwarg) and worker.py.
     worker = PipelineWorker(
         pipeline,
+        observers=[latency_observer, error_observer],
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
-            observers=[latency_observer, error_observer],
         ),
     )
 

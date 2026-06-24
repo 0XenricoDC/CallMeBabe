@@ -269,6 +269,73 @@ def test_latency_observer_survives_bad_frame(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Observer attachment (root-cause regression: push_calls=0 live)
+# ---------------------------------------------------------------------------
+
+def test_custom_observers_attached_to_worker():
+    """REGRESSION: custom observers must reach the worker's frame-push path.
+
+    Root cause of the live `push_calls=0` bug: observers were passed via
+    `PipelineParams(observers=[...])`, but PipelineParams has NO `observers` field
+    (Pydantic silently drops the kwarg), so they were never registered with the
+    WorkerObserver proxy and on_push_frame never fired — breaking BOTH latency
+    capture (D-06) and the error-fallback courtesy phrase (REL-01).
+
+    Custom observers MUST be passed via the dedicated `observers=` parameter of
+    PipelineWorker. This test builds a real worker and asserts the custom observer
+    is present in the WorkerObserver's managed observer list (the proxy that drives
+    on_push_frame for every pushed frame).
+    """
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.worker import PipelineParams, PipelineWorker
+    from pipecat.processors.frame_processor import FrameProcessor
+    from pipecat.observers.base_observer import BaseObserver
+
+    class _CountingObserver(BaseObserver):
+        def __init__(self):
+            super().__init__()
+            self.count = 0
+
+        async def on_push_frame(self, data):
+            self.count += 1
+
+    class _Passthrough(FrameProcessor):
+        pass
+
+    obs = _CountingObserver()
+    pipeline = Pipeline([_Passthrough(), _Passthrough()])
+
+    # CORRECT wiring: observers via the dedicated kwarg (NOT inside params).
+    worker = PipelineWorker(
+        pipeline,
+        observers=[obs],
+        params=PipelineParams(enable_metrics=True),
+    )
+
+    # The WorkerObserver proxy that fans frames out to every observer must include ours.
+    managed = worker._observer._observers  # internal, but the only attachment surface
+    assert obs in managed, (
+        "Custom observer was not registered with the worker's WorkerObserver proxy — "
+        "on_push_frame would never fire. Pass observers via PipelineWorker(observers=[...]), "
+        "not via PipelineParams (which has no observers field)."
+    )
+
+
+def test_pipeline_params_has_no_observers_field():
+    """REGRESSION guard: documents WHY observers must not go through PipelineParams.
+
+    If a future pipecat release adds an `observers` field to PipelineParams this test
+    will fail, prompting a deliberate review of the wiring in bot.py.
+    """
+    from pipecat.pipeline.worker import PipelineParams
+
+    assert "observers" not in PipelineParams.model_fields, (
+        "PipelineParams now has an 'observers' field — re-evaluate bot.py observer "
+        "wiring (currently observers are passed via PipelineWorker(observers=[...]))."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Task 2: ErrorFallbackObserver
 # ---------------------------------------------------------------------------
 
