@@ -3,7 +3,7 @@
 Guida operativa rapida: come avviare, provare e testare il bot.
 **Questo file viene aggiornato man mano che il progetto avanza.**
 
-> Ultimo aggiornamento: 2026-06-24 — Fase 1, piano 01-02 (slice voce E2E) completato e verificato in live.
+> Ultimo aggiornamento: 2026-06-25 — Fase 1 COMPLETA (tutti e 3 i piani verificati live). In attesa di verifica di fase.
 
 ---
 
@@ -102,7 +102,7 @@ Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 
 | Fase | Nome | Stato |
 |------|------|-------|
-| 1 | Local Voice Loop (bot vocale locale) | ◆ In corso |
+| 1 | Local Voice Loop (bot vocale locale) | ✅ Completa (in verifica) |
 | 2 | Booking / Calendar | ○ Da fare |
 | 3 | Notifiche / riepilogo fine chiamata | ○ Da fare |
 | 4 | Telefonia Telnyx | ○ Da fare |
@@ -114,7 +114,19 @@ Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 |-------|---------|-------|
 | 01-01 | Scheletro: venv 3.12, dipendenze, config tenant + SQLite, seam interfacce, test harness | ✓ Completo |
 | 01-02 | Slice voce E2E: pipeline Deepgram→Claude→ElevenLabs, saluto IT, barge-in | ✓ Completo (verificato live) |
-| 01-03 | Strumentazione latenza per-stage + frase di cortesia su errore | ○ Prossimo |
+| 01-03 | Strumentazione latenza per-stage + frase di cortesia su errore | ✅ Completo (verificato live) |
 
-> Nota latenza: durante il test live di 01-02 si è percepita "un po' di latenza lato Claude".
-> Il piano 01-03 aggiunge la misurazione per-stage che la quantificherà.
+### 📊 Latenza misurata (Fase 1, dati reali `logs/latency.jsonl`)
+
+Output per turno in console: `response=Xms | stt=.. llm_ttft=.. tts_ttfb=.. (turn=Yms)`
+(`response_ms` = latenza di risposta = stt + llm_ttft + tts_ttfb; il `[WARN]` scatta se > 800ms).
+Per la diagnostica verbosa: avvia con `LATENCY_DEBUG=1`.
+
+Misure a regime: STT ~600–740ms · **Claude TTFT ~800ms (warm), ~2.3s (cold start)** · TTS ~290ms → risposta ~1.7s.
+⚠️ **Sopra il budget <800ms.** Ottimizzazione rimandata a una fase futura. Leve identificate:
+- **Prompt caching Anthropic NON attivo** (`cache_read_input_tokens=0`) → attivarlo sul system prompt taglia il TTFT di Claude.
+- Cold start del primo turno; eventuale tuning modello/streaming.
+
+### 🩹 Frase di cortesia (REL-01)
+Su errore di un provider il bot dice *"Mi scusi, ho avuto un problema tecnico, può ripetere?"* invece del silenzio.
+Per testarlo: metti temporaneamente una `ANTHROPIC_API_KEY` non valida nel `.env`, riavvia, parla → senti la frase. Poi ripristina la chiave.
