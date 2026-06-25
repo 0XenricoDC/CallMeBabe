@@ -45,13 +45,28 @@ Un chiamante completa una **prenotazione vocale in italiano** end-to-end via **P
 - **D-13:** Conversazione orchestrata come **grafo di nodi Pipecat Flows** (greeting → booking → faq), ogni nodo espone **solo i tool che gli servono** (evita il monoprompt con tutti i tool → riduce allucinazioni). Handler delle funzioni: `collect_*`, `check_availability`, `create_event`/`book`, `faq_lookup`. La conferma "prenotato" è guidata **dal risultato del tool**, non dal modello (D-gating BOOK-05).
 - **D-14:** Una prenotazione confermata è **persistita nel DB del progetto** (record `reservation`) oltre che scritta su Calendar (BOOK-06) — il DB è la fonte autoritativa della capienza, il Calendar la proiezione.
 
+### Design conversazionale della raccolta dati (PITFALL 5)
+- **D-15:** Il **numero di telefono viene sempre riletto cifra-per-cifra** per conferma ("3-4-7…"); il **nome viene fatto compitare** ("me lo conferma lettera per lettera?") **solo su bassa confidenza STT**. Sono i campi che corrompono silenziosamente la prenotazione → massima robustezza.
+- **D-16:** Il bot **capisce date/orari naturali in italiano**: relative comuni ("oggi", "domani", "dopodomani", "venerdì prossimo", "questo sabato") **+** date assolute ("8 luglio"), risolte su **timezone Europe/Rome**. Ampiezza esatta del parsing = discrezione planning, partendo da questo set.
+
+### Correzioni & abbandono
+- **D-17:** Su un "no" al read-back finale (o richiesta di correzione), il bot **corregge solo il campo indicato** ("quale vuole cambiare?"), ri-raccoglie quello e **ripete il read-back** — i Flows devono saper tornare al singolo campo, non riavviare tutto.
+- **D-18:** Se il chiamante **abbandona / non risponde più** a metà flusso, il bot **salva una bozza incompleta** nel DB (dati parziali raccolti) come **record distinto** dalla prenotazione confermata. La bozza **non viene mai scritta su Calendar** e non è una conferma. L'eventuale follow-up/notifica all'owner sulle bozze è tema **Fase 3** (NOTIF-*). *(Compatibile con "nessuna prenotazione senza event id": la bozza è uno stato separato, non una prenotazione.)*
+
+### Modello & persona del booking
+- **D-19:** Sul **path prenotazione** si usa **Claude Sonnet (`claude-sonnet-4-6`)** per un tool-calling più affidabile su date/capienza/calendar (mitiga PITFALL 6); **Haiku (`claude-haiku-4-5`) resta altrove**. Implica un **override di modello per-nodo/per-path** sopra il campo `model` per-tenant (oggi singolo) — meccanismo esatto a planning. Temperatura bassa + max_tokens stretti sul booking.
+- **D-20:** Persona del booking = **cordiale ma essenziale, dà del "Lei"** (tono caldo/professionale da centralino di ristorante, risposte brevi per il vocale a bassa latenza). Coerente con la persona "receptionist" della Fase 1; definisce/estende il `system_prompt` del tenant demo.
+
+### Contenuto evento calendario & record reservation
+- **D-21:** L'**evento Google Calendar** ha un **titolo riassuntivo** (es. "Prenotazione - Rossi (4p)") e i **dettagli nella descrizione** (nome, n. persone, telefono, eventuali note, marker "via Centralino AI"); `start`/`end` = slot prenotato. L'owner vede tutto a colpo d'occhio.
+- **D-22:** Il record `reservation` nel DB è il **set completo + link al calendario**: `tenant_id`, slot (data/ora), n. persone, nome, telefono, **stato** (confermata/bozza, vedi D-18), **`google_event_id`**, timestamp, eventuali note. Abilita capienza autoritativa, idempotenza e riconciliazione con Calendar.
+
 ### Claude's Discretion
-- **Modello Claude per il path booking**: il campo `model` per-tenant esiste già (default `claude-haiku-4-5`). Se serve più affidabilità nel tool-calling del booking, valutare in planning Sonnet per il tenant demo — temperatura bassa + max_tokens stretti sul path booking (PITFALL 6).
-- **Design conversazionale della raccolta dati**: gestione date relative ("domani", "venerdì prossimo"), normalizzazione orari ("le otto" → 20:00), **conferma del telefono cifra-per-cifra / spelling del nome su bassa confidenza** (PITFALL 5 raccomanda read-back e spelling). Ordine esatto di raccolta dei campi.
-- **Wording esatto** di read-back, frasi "slot pieno", proposta alternative, e risposta "info assente".
+- **Wording esatto** di read-back, frasi "slot pieno", proposta alternative, risposta "info assente", e meccanismo preciso dell'override modello per-nodo (D-19).
 - **Granularità slot e formato `booking_rules`** (D-03): partire da slot fissi semplici.
 - **Schema persistenza** (`reservations`, `kb_documents`/`kb_chunks`): la ricerca suggeriva SQLAlchemy, ma la Fase 1 ha usato `aiosqlite` + SQL parametrizzato dietro repository. Mantenere coerenza col pattern Fase 1 salvo motivazione contraria in planning.
 - **Profondità ricerca alternative** (D-05): quante proposte, quanti giorni in avanti.
+- **Ampiezza parsing date relative** (D-16): set minimo "oggi/domani" + assolute garantito.
 </decisions>
 
 <canonical_refs>
@@ -102,8 +117,10 @@ Un chiamante completa una **prenotazione vocale in italiano** end-to-end via **P
 
 ### Integration Points
 - `build_pipeline()` → innesto del `FlowManager` con nodi greeting→booking→faq; i tool handler chiamano `CalendarProvider` (Google) e `KnowledgeBase` (FTS5) e ritornano `(result, next_node)`.
-- Nuova colonna `tenants.calendar_id` + nuove tabelle `reservations`, `kb_documents`/`kb_chunks` nello schema; nuovo seed/ingest KB per il tenant demo (`data/tenants/<slug>/kb/`).
+- Nuova colonna `tenants.calendar_id` + nuove tabelle `reservations` (con `status` confermata/bozza, `google_event_id`, vedi D-22), `kb_documents`/`kb_chunks` nello schema; nuovo seed/ingest KB per il tenant demo (`data/tenants/<slug>/kb/`).
 - Credenziale service-account Google via `.env` (nuova chiave `GOOGLE_*` da aggiungere a `.env.example`, prima differita dalla Fase 1).
+- Override modello per-nodo (Sonnet sul booking, Haiku altrove, D-19): meccanismo sopra il campo `model` per-tenant — il nodo booking dei Flows istanzia/seleziona un LLM service distinto.
+- Bozza incompleta su abbandono (D-18): record `reservation` con `status=bozza`, mai propagato a Calendar.
 </code_context>
 
 <specifics>
@@ -114,6 +131,9 @@ Un chiamante completa una **prenotazione vocale in italiano** end-to-end via **P
 - Info FAQ assente: "Non ho questa informazione al momento, posso prendere nota e farla ricontattare."
 - Regola system prompt booking: "Mai confermare una prenotazione o una disponibilità senza il risultato dello strumento. Se lo strumento non risponde, di' che verifichi."
 - Capienza = coperti totali per fascia (es. max 40 coperti per slot), somma transazionale.
+- Telefono sempre riletto cifra-per-cifra ("3-4-7…"); nome compitato solo su bassa confidenza ("me lo conferma lettera per lettera?").
+- Titolo evento Calendar: "Prenotazione - Rossi (4p)"; descrizione con nome, persone, telefono, note, marker "via Centralino AI".
+- Persona booking: cordiale, dà del "Lei", risposte brevi.
 </specifics>
 
 <deferred>

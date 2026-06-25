@@ -121,6 +121,106 @@
 
 ---
 
+> **Sessione di aggiornamento (2026-06-25):** quattro aree aggiuntive lockate (prima a discrezione planning).
+
+## Design raccolta dati vocale
+
+### Conferma campi fragili (telefono/nome)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Telefono cifra-per-cifra sempre + nome su dubbio | telefono sempre riletto; nome compitato solo su bassa confidenza | ✓ |
+| Read-back solo nel riepilogo finale | nessuna conferma per-campo, solo read-back finale | |
+| Tu decidi (planning) | strategia a planning | |
+
+**User's choice:** Telefono cifra-per-cifra sempre + nome su dubbio
+
+### Date/orari naturali
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Relative comuni + assolute | oggi/domani/dopodomani/venerdì prossimo + date assolute, Europe/Rome | ✓ |
+| Solo date assolute + ora esplicita | chiede sempre data/ora esplicite | |
+| Tu decidi (planning) | ampiezza parsing a planning | |
+
+**User's choice:** Relative comuni + assolute
+
+---
+
+## Correzioni & cambio idea
+
+### Correzione campo
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Corregge solo il campo indicato | ri-raccoglie il singolo campo, poi ripete read-back | ✓ |
+| Ricomincia la raccolta da capo | ri-chiede tutti i campi | |
+| Tu decidi (planning) | granularità a planning | |
+
+**User's choice:** Corregge solo il campo indicato
+
+### Abbandono a metà flusso
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Niente scritto, nessuna traccia di booking | nessun evento/record finché non c'è event id | |
+| Salva una bozza incompleta | persiste i dati parziali come bozza nel DB (record distinto, mai su Calendar) | ✓ |
+| Tu decidi (planning) | gestione a planning | |
+
+**User's choice:** Salva una bozza incompleta
+
+**Notes:** La bozza è uno stato separato, compatibile con "nessuna prenotazione senza event id". Follow-up/notifica bozze → Fase 3.
+
+---
+
+## Modello & persona booking
+
+### Modello sul path booking
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Sonnet sul booking (Haiku altrove) | claude-sonnet-4-6 per tool-calling affidabile sul booking | ✓ |
+| Haiku ovunque (default attuale) | claude-haiku-4-5 anche sul booking per latenza | |
+| Tu decidi (planning) | scelta a planning | |
+
+**User's choice:** Sonnet sul booking (Haiku altrove)
+
+### Tono/persona
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Cordiale ma essenziale (Lei) | tono caldo/professionale, dà del Lei, risposte brevi | ✓ |
+| Informale e amichevole (tu) | tono colloquiale | |
+| Tu decidi (planning) | tono a planning | |
+
+**User's choice:** Cordiale ma essenziale (Lei)
+
+---
+
+## Contenuto evento & record
+
+### Evento Google Calendar
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Titolo riassuntivo + dettagli in descrizione | "Prenotazione - Rossi (4p)" + nome/persone/telefono/note in descrizione | ✓ |
+| Solo titolo minimale | solo nome nel titolo | |
+| Tu decidi (planning) | formato a planning | |
+
+**User's choice:** Titolo riassuntivo + dettagli in descrizione
+
+### Record reservation DB
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Set completo + link al calendario | tenant_id, slot, persone, nome, telefono, stato, google_event_id, timestamp, note | ✓ |
+| Minimo per la capienza | solo tenant_id, slot, persone, stato | |
+| Tu decidi (planning) | schema a planning | |
+
+**User's choice:** Set completo + link al calendario
+
+---
+
 ## Claude's Discretion
 
 - Modello Claude per il path booking (Haiku default vs Sonnet per affidabilità tool-calling; temperatura bassa + max_tokens stretti).
