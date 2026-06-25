@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 01-03-PLAN.md (latency instrumentation + error fallback; live-verified). Phase 1 ready for verification.
-last_updated: "2026-06-24T20:51:19.740Z"
-last_activity: 2026-06-24
+status: verified
+stopped_at: Phase 1 VERIFIED (passed, 6/7 must-haves; SC-3 <800ms budget accepted as deferred by owner). Ready for Phase 2.
+last_updated: "2026-06-25T00:00:00.000Z"
+last_activity: 2026-06-25
 progress:
   total_phases: 5
   completed_phases: 1
@@ -96,7 +96,7 @@ None yet.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Performance | Latency optimization to meet <800ms budget (response ~1.7s warm, Claude TTFT-dominated). Levers: enable Anthropic prompt caching (cache_read_input_tokens=0), STT endpointing tuning, cold-start mitigation. Instrumentation (VOICE-04) already delivered to measure it. | Open | Phase 1 (2026-06-25) |
 
 ## Session Continuity
 
