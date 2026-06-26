@@ -53,10 +53,14 @@ class DeepgramProvider(STTProvider):
 
     def create_service(self) -> DeepgramSTTService:
         # Security (T-02-KEY): key via env only, never logged.
+        # Model is env-overridable: default stays nova-2 (CLAUDE.md Phase-1 lock),
+        # set DEEPGRAM_MODEL=nova-3 in .env to A/B the better-Italian-WER model on
+        # hard inputs (proper names, phone numbers) without a code change.
+        model = os.getenv("DEEPGRAM_MODEL", _DEEPGRAM_MODEL)
         return DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             settings=DeepgramSTTService.Settings(
-                model=_DEEPGRAM_MODEL,
+                model=model,
                 language="it",
                 # Pitfall 8: Italian needs longer endpointing than English default.
                 # 400ms is the starting point; tune down if utterances feel truncated.
@@ -64,6 +68,10 @@ class DeepgramProvider(STTProvider):
                 interim_results=True,  # enables streaming transcription
                 smart_format=False,    # cleaner raw text for LLM
                 punctuate=True,
+                # numerals=True: transcribe spoken digit sequences as numbers
+                # ("tre tre uno" -> "331"), which materially improves phone-number
+                # capture for the booking read-back (#3). Independent of smart_format.
+                numerals=True,
             ),
         )
 
