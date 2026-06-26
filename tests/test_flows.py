@@ -122,6 +122,31 @@ async def test_readback_gating():
     )
 
 
+async def test_collect_returns_spelled_readback():
+    """BOOK-03/D-15: collect handler returns a deterministic read-back string with the
+    phone spelled digit-by-digit, so the read-back does not depend on the LLM.
+    """
+    fm = _make_flow_manager()
+    args = _make_args(
+        date="2025-07-08",
+        time_slot="20:00",
+        covers=4,
+        name="Rossi",
+        phone="3471234567",
+    )
+
+    result, _ = await handle_collect_booking_info(args, fm)
+
+    assert "readback" in result, "collect handler must return a 'readback' string (BOOK-03)"
+    readback = result["readback"]
+    # Phone spelled digit-by-digit (D-15): each digit separated by a space.
+    assert "3 4 7 1 2 3 4 5 6 7" in readback, (
+        f"phone must be spelled digit-by-digit in the read-back. Got: {readback!r}"
+    )
+    # The collected fields must appear in the read-back.
+    assert "Rossi" in readback and "4 persone" in readback and "20:00" in readback
+
+
 # ---------------------------------------------------------------------------
 # BOOK-05: Tool-result gated confirmation
 # ---------------------------------------------------------------------------

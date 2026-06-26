@@ -157,8 +157,20 @@ async def handle_collect_booking_info(args: dict, fm) -> tuple[dict, None]:
         "name": args["name"],
         "phone": args["phone"],
     }
+    # Build the read-back string server-side so it is deterministic (BOOK-03/D-15)
+    # rather than relying on the LLM to remember to read everything back — the
+    # previous prompt-only approach let the model skip the read-back under
+    # interruptions/latency. The phone is spelled digit-by-digit (D-15) so the TTS
+    # pronounces each digit clearly instead of one run-on, alien-sounding number.
+    phone_spelled = " ".join(ch for ch in str(args["phone"]) if ch.isdigit())
+    readback = (
+        f"Le rileggo i dati: prenotazione per il {args['date']} "
+        f"alle {args['time_slot']}, per {args['covers']} persone, "
+        f"a nome {args['name']}, numero di telefono {phone_spelled}. "
+        "È tutto corretto?"
+    )
     # Stay in booking node — do NOT call create_event here (BOOK-03 read-back gating)
-    return {"collected": True}, None
+    return {"collected": True, "readback": readback}, None
 
 
 async def handle_confirm_booking(args: dict, fm) -> tuple[dict, dict | None]:

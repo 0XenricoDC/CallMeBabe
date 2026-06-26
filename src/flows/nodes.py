@@ -96,9 +96,11 @@ def build_booking_node(tenant: TenantConfig) -> dict:
             {
                 "role": "user",
                 "content": (
-                    "Raccogli data, ora, numero persone, nome e telefono. "
-                    "Dopo aver raccolto tutti e cinque i dati, rileggili al cliente per conferma. "
-                    "Rileggi il numero di telefono cifra per cifra (D-15). "
+                    "Raccogli data, ora, numero persone, nome e telefono, poi chiama "
+                    "collect_booking_info con tutti e cinque i dati. "
+                    "collect_booking_info restituisce un campo 'readback': leggilo al "
+                    "cliente ESATTAMENTE come scritto (è già la rilettura completa, "
+                    "telefono incluso cifra per cifra — D-15) e ATTENDI la sua conferma. "
                     "Solo dopo la conferma vocale del cliente, chiama confirm_booking. "
                     "Se il cliente dice 'no' o vuole correggere un dato, chiedi quale campo "
                     "vuole cambiare e chiama correct_booking_field con il campo e il nuovo valore, "
