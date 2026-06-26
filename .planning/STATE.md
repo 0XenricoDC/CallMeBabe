@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-06-26T07:45:22.866Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-06-26T08:10:28.952Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 20
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 02 (booking-calendar-faq) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-26
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████░░░░] 57%
 | Phase 01 P02 | 6 | 2 tasks | 5 files |
 | Phase 01 P03 | 180 | 4 tasks | 7 files |
 | Phase 02-booking-calendar-faq P01 | 35 | 3 tasks | 14 files |
+| Phase 02-booking-calendar-faq P02 | 15 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [01-03]: UAT (future optimisation, out of scope): live response latency ~1.7s warm / ~3.3s cold, dominated by Claude TTFT + STT, over the 800ms budget; Anthropic prompt caching not active (cache_read=0).
 - [Phase ?]: [02-01]: Anthropic model IDs claude-haiku-4-5 (default) and claude-sonnet-4-6 (booking D-19) carried from Phase 1; test_model_ids.py skips without API key
 - [Phase ?]: [02-01]: Dev DB migration for calendar_id: delete centralino.db and re-seed (no ALTER TABLE in schema.sql for idempotency per Pitfall 5)
+- [Phase ?]: [02-02]: BEGIN IMMEDIATE + asyncio.Lock serializes concurrent try_reserve_slot; bozza rows count toward capacity
+- [Phase ?]: [02-02]: dateparser LANGUAGES passed as separate kwarg not inside settings dict (API correctness)
+- [Phase ?]: [02-02]: build_end_node transition reachable ONLY on truthy event_id branch — structural BOOK-05 gating
 
 ### Pending Todos
 
@@ -103,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-26T07:45:22.848Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-06-26T08:10:28.927Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None

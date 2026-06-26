@@ -71,7 +71,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 02-02-PLAN.md — First vertical slice: end-to-end booking happy path — CalendarProvider (InMemory + Google), ReservationRepository (BEGIN IMMEDIATE), date parser, booking Flows nodes with tool-result-gated confirm (BOOK-01..06, SC1/SC3)
+- [x] 02-02-PLAN.md — First vertical slice: end-to-end booking happy path — CalendarProvider (InMemory + Google), ReservationRepository (BEGIN IMMEDIATE), date parser, booking Flows nodes with tool-result-gated confirm (BOOK-01..06, SC1/SC3)
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
-| 2. Booking + Calendar + FAQ | 1/4 | In Progress|  |
+| 2. Booking + Calendar + FAQ | 2/4 | In Progress|  |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
