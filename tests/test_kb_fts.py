@@ -107,3 +107,32 @@ def test_kb_fts_parameterized():
     assert 'f"SELECT' not in source, (
         "SQLiteFTSKnowledgeBase must not use f-strings to build SELECT queries."
     )
+
+
+async def test_fts5_natural_speech_no_raise(seeded_kb: SQLiteFTSKnowledgeBase):
+    """T-02-12: FTS5 MATCH injection guard — natural-speech queries must never raise.
+
+    Bare FTS5 keywords (AND, OR, NOT) and unmatched quotes are syntactically
+    invalid in FTS5 MATCH expressions. search() must sanitize or catch the error
+    and return an empty list rather than propagating an OperationalError.
+    This prevents Pitfall-6 crashes on everyday Italian speech.
+    """
+    problematic_queries = [
+        "AND",               # bare FTS5 keyword
+        "OR",                # bare FTS5 keyword
+        "NOT",               # bare FTS5 keyword
+        '"',                 # unterminated quote
+        '"open quote',       # unterminated quote
+        "orari e prezzi",    # 'e' is not a special FTS5 keyword — should succeed
+    ]
+    for query in problematic_queries:
+        try:
+            results = await seeded_kb.search(tenant_id="demo", query=query, top_k=3)
+            assert isinstance(results, list), (
+                f"search({query!r}) must return a list; got {type(results)}"
+            )
+        except Exception as exc:
+            raise AssertionError(
+                f"search({query!r}) must not raise; got {type(exc).__name__}: {exc}\n"
+                "Natural-speech queries must be sanitized or OperationalError caught (T-02-12)."
+            ) from exc
