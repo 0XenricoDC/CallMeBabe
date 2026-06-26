@@ -1,7 +1,11 @@
-"""Pipecat Flows handler functions and FlowsFunctionSchema builders for booking (D-13).
+"""Pipecat Flows handler functions and FlowsFunctionSchema builders for booking + FAQ (D-13).
 
 Implements the tool-result-gated booking flow:
   collect_booking_info → (read-back in booking node) → confirm_booking → end node
+
+Also implements the hybrid FAQ flow (D-06):
+  faq_lookup → structured config fields (hours/services) OR FTS5 KB search
+  When nothing matches: found=False fallback (D-08, FAQ-02)
 
 BOOK-05 gating: the end node transition happens ONLY when create_event returns a
 real event_id.  On any failure (capacity, calendar, DB) the handler returns
@@ -11,6 +15,7 @@ Security:
 - T-02-07: PII (phone, name) is NEVER logged in except clauses.
 - T-02-06: tenant_id comes from fm.state session context, not from tool args.
 - T-01-SQLI: all DB access goes through ReservationRepository (parameterized SQL).
+- T-02-13: KB queries always use tenant_id from session context (never caller input).
 
 Pattern analog: src/pipeline/fallback.py (async handler + try/except + no-secrets-in-logs).
 """
@@ -24,6 +29,7 @@ from pipecat_flows import FlowsFunctionSchema
 
 from src.booking.date_parser import slot_to_datetimes
 from src.booking.repository import ReservationRepository
+from src.kb.fts import SQLiteFTSKnowledgeBase
 
 # D-05: how many days forward to search when the requested day has no free slots
 MAX_ALT_DAYS = 3
@@ -313,3 +319,154 @@ async def correct_booking_field(args: dict, fm) -> tuple[dict, None]:
 
     # Return (result, None) — stay in booking node for re-read-back (D-17)
     return {"corrected": field_name}, None
+
+
+# ---------------------------------------------------------------------------
+# FAQ handlers and schema builders (D-06, D-07, D-08, FAQ-01..03)
+# ---------------------------------------------------------------------------
+
+# Keywords that indicate the caller is asking about hours or services (D-06).
+# These are answered directly from TenantConfig structured fields — no FTS5 call.
+_HOURS_KEYWORDS = {"orari", "orario", "apertura", "chiusura", "aperto", "chiuso", "aprite", "chiudete"}
+_SERVICES_KEYWORDS = {"servizi", "servizio", "cucina", "specialità", "specialita", "offrite", "offerta"}
+
+
+def build_faq_lookup_schema() -> FlowsFunctionSchema:
+    """Return the FlowsFunctionSchema for faq_lookup.
+
+    Hybrid routing (D-06):
+    - Hours/services queries → answered from TenantConfig structured fields.
+    - Address/price/free-text queries → FTS5 KB search via SQLiteFTSKnowledgeBase.
+    - No match → found=False (D-08 honest fallback, FAQ-02).
+    """
+    return FlowsFunctionSchema(
+        name="faq_lookup",
+        description=(
+            "Cerca una risposta alla domanda del cliente nella knowledge base del ristorante. "
+            "Usa questo strumento per domande su orari, indirizzo, prezzi, menu, servizi, "
+            "e qualsiasi altra informazione sul ristorante."
+        ),
+        properties={
+            "query": {
+                "type": "string",
+                "description": "La domanda o il termine da cercare (in italiano).",
+            },
+        },
+        required=["query"],
+        handler=handle_faq_lookup,
+    )
+
+
+async def handle_faq_lookup(args: dict, fm) -> tuple[dict, None]:
+    """Hybrid FAQ retrieval (D-06, D-07, D-08, FAQ-01..03).
+
+    Routing logic:
+    1. If the query contains hours/services keywords → answer from TenantConfig.hours
+       or TenantConfig.services (structured fields, no FTS5 call needed).
+    2. Otherwise → call SQLiteFTSKnowledgeBase.search(tenant_id, query, top_k=3).
+    3. If search returns nothing → found=False (D-08 fallback: honest 'non ho questa info').
+
+    Security:
+    - T-02-13: tenant_id comes from fm.state session context, never from caller input.
+    - T-01-SQLI: SQLiteFTSKnowledgeBase uses parameterized MATCH ? (Pitfall 6).
+    """
+    from src.config.tenant_config import TenantConfig
+
+    query: str = args.get("query", "").lower().strip()
+    tenant: TenantConfig | None = fm.state.get("tenant")
+    db_path: str = fm.state.get("db_path", "centralino.db")
+    # tenant_id from session context — T-02-13
+    tenant_id: str = (tenant.id if tenant else "") or fm.state.get("tenant_id", "")
+
+    # --- Step 1: Hybrid routing — check structured config fields first (D-06) ---
+    query_tokens = set(query.split())
+
+    # Hours query (orari di apertura, a che ora aprite, etc.)
+    if query_tokens & _HOURS_KEYWORDS:
+        hours = (tenant.hours or "") if tenant else ""
+        services = (tenant.services or "") if tenant else ""
+        answer = f"Orari: {hours}" if hours else "Orari non disponibili"
+        if query_tokens & _SERVICES_KEYWORDS and services:
+            answer = f"Orari: {hours}. Servizi: {services}"
+        return {"source": "config", "answer": answer}, None
+
+    # Services query (servizi, cucina, specialità, etc.)
+    if query_tokens & _SERVICES_KEYWORDS:
+        services = (tenant.services or "") if tenant else ""
+        answer = f"Servizi: {services}" if services else "Informazioni sui servizi non disponibili"
+        return {"source": "config", "answer": answer}, None
+
+    # --- Step 2: FTS5 KB search for address/price/free-text queries ---
+    kb = SQLiteFTSKnowledgeBase(db_path=db_path)
+    chunks = await kb.search(tenant_id=tenant_id, query=query, top_k=3)
+
+    if chunks:
+        return {"found": True, "chunks": chunks}, None
+
+    # --- Step 3: No match — honest fallback (D-08, FAQ-02) ---
+    # Return found=False; the FAQ node's role_message instructs the LLM to speak the
+    # D-08 phrase: 'Non ho questa informazione al momento, posso prendere nota...'
+    return {"found": False}, None
+
+
+def build_route_to_faq_schema() -> FlowsFunctionSchema:
+    """Return the FlowsFunctionSchema for route_to_faq (W1 greeting → faq transition).
+
+    Called by the LLM from the greeting node when the caller has a question.
+    Handler returns (result, build_faq_node(tenant)) to transition the flow to the FAQ node.
+    """
+    return FlowsFunctionSchema(
+        name="route_to_faq",
+        description=(
+            "Passa al nodo FAQ per rispondere a una domanda del cliente "
+            "(su orari, indirizzo, prezzi, menu, servizi, ecc.)."
+        ),
+        properties={
+            "reason": {
+                "type": "string",
+                "description": "Breve descrizione della domanda del cliente.",
+            },
+        },
+        required=["reason"],
+        handler=handle_route_to_faq,
+    )
+
+
+async def handle_route_to_faq(args: dict, fm) -> tuple[dict, dict]:
+    """Transition from greeting node to the FAQ node (W1)."""
+    from src.flows.nodes import build_faq_node
+    from src.config.tenant_config import TenantConfig
+
+    tenant: TenantConfig | None = fm.state.get("tenant")
+    return {"routed": "faq"}, build_faq_node(tenant)
+
+
+def build_route_to_booking_schema() -> FlowsFunctionSchema:
+    """Return the FlowsFunctionSchema for route_to_booking (W1 greeting → booking transition).
+
+    Called by the LLM from the greeting node when the caller wants to make a reservation.
+    Handler returns (result, build_booking_node(tenant)) to transition to the booking node.
+    """
+    return FlowsFunctionSchema(
+        name="route_to_booking",
+        description=(
+            "Passa al nodo prenotazione quando il cliente vuole prenotare un tavolo."
+        ),
+        properties={
+            "reason": {
+                "type": "string",
+                "description": "Breve descrizione della richiesta di prenotazione del cliente.",
+            },
+        },
+        required=["reason"],
+        handler=handle_route_to_booking,
+    )
+
+
+async def handle_route_to_booking(args: dict, fm) -> tuple[dict, dict]:
+    """Transition from greeting node to the booking node (W1)."""
+    from src.flows.nodes import build_booking_node
+    from src.config.tenant_config import TenantConfig
+
+    tenant: TenantConfig | None = fm.state.get("tenant")
+    return {"routed": "booking"}, build_booking_node(tenant)

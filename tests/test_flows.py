@@ -31,8 +31,16 @@ from src.flows.functions import (  # noqa: F401
     handle_collect_booking_info,
     handle_confirm_booking,
     correct_booking_field,
+    handle_faq_lookup,
+    build_route_to_faq_schema,
+    build_route_to_booking_schema,
 )
-from src.flows.nodes import build_end_node  # noqa: F401
+from src.flows.nodes import (  # noqa: F401
+    build_end_node,
+    build_faq_node,
+    build_greeting_node,
+    build_booking_node,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -530,4 +538,206 @@ async def test_no_event_on_decline(reservation_repo, in_memory_calendar):
     )
     assert next_node is None, (
         "SC2: decline must return next_node=None"
+    )
+
+
+# ---------------------------------------------------------------------------
+# FAQ-01 / D-06: Hybrid routing — structured config vs FTS5
+# ---------------------------------------------------------------------------
+
+
+async def test_faq_hybrid_structured(seeded_kb):
+    """FAQ-01 / D-06: hours/services from TenantConfig — no FTS5 call needed.
+
+    When the caller asks about hours or services, handle_faq_lookup must return
+    the answer directly from tenant.hours / tenant.services (structured fields)
+    with source='config'.  No SQLiteFTSKnowledgeBase.search call should be made.
+    """
+    from src.db.seed_demo import build_demo_tenant
+    from unittest.mock import AsyncMock, patch
+
+    tenant = build_demo_tenant()
+    fm = _make_flow_manager(state={
+        "tenant": tenant,
+        "db_path": seeded_kb._db_path,
+    })
+
+    # Test hours query
+    with patch("src.flows.functions.SQLiteFTSKnowledgeBase") as MockKB:
+        result, next_node = await handle_faq_lookup({"query": "orari di apertura"}, fm)
+
+    assert result.get("source") == "config", (
+        f"D-06: hours query must return source='config'; got {result!r}"
+    )
+    assert tenant.hours in result.get("answer", ""), (
+        f"D-06: answer must contain hours from TenantConfig; got {result!r}"
+    )
+    assert next_node is None, "FAQ handler must return next_node=None (stay in FAQ node)"
+    # FTS5 must NOT be called for hours queries
+    MockKB.assert_not_called()
+
+    # Test services query
+    with patch("src.flows.functions.SQLiteFTSKnowledgeBase") as MockKB:
+        result2, _ = await handle_faq_lookup({"query": "servizi disponibili"}, fm)
+
+    assert result2.get("source") == "config", (
+        f"D-06: services query must return source='config'; got {result2!r}"
+    )
+    MockKB.assert_not_called()
+
+
+async def test_faq_hybrid_fts(seeded_kb):
+    """FAQ-01 / D-06: address/price/free-text from FTS5 KB.
+
+    When the caller asks about address or prices (not hours/services), handle_faq_lookup
+    must call SQLiteFTSKnowledgeBase.search and return the matching chunks.
+    """
+    from src.db.seed_demo import build_demo_tenant
+
+    tenant = build_demo_tenant()
+    # Use seeded_kb DB (contains demo chunks with address and prices)
+    fm = _make_flow_manager(state={
+        "tenant": tenant,
+        "db_path": seeded_kb._db_path,
+    })
+
+    result, next_node = await handle_faq_lookup({"query": "indirizzo"}, fm)
+
+    assert result.get("found") is True, (
+        f"D-06: address query must return found=True from FTS5; got {result!r}"
+    )
+    assert "chunks" in result, (
+        f"D-06: FTS5 result must include 'chunks' list; got {result!r}"
+    )
+    assert len(result["chunks"]) > 0, (
+        f"D-06: FTS5 must return at least one chunk for 'indirizzo'; got {result!r}"
+    )
+    assert next_node is None, "FAQ handler must return next_node=None (stay in FAQ node)"
+
+
+async def test_faq_not_found_routes_fallback(seeded_kb):
+    """FAQ-02 / D-08: no KB match → found=False honest fallback, no invented answer.
+
+    When the FTS5 search returns no results, handle_faq_lookup must return
+    found=False (not an answer) so the FAQ node can speak the D-08 fallback phrase:
+    'Non ho questa informazione al momento, posso prendere nota e farla ricontattare'.
+    No invented content must appear in the result.
+    """
+    from src.db.seed_demo import build_demo_tenant
+
+    tenant = build_demo_tenant()
+    fm = _make_flow_manager(state={
+        "tenant": tenant,
+        "db_path": seeded_kb._db_path,
+    })
+
+    result, next_node = await handle_faq_lookup(
+        {"query": "zxqwjkpineapplexqzw_notfound"}, fm
+    )
+
+    assert result.get("found") is False, (
+        f"FAQ-02 / D-08: no-match must return found=False; got {result!r}"
+    )
+    # Must not invent an answer
+    assert "chunks" not in result or len(result.get("chunks", [])) == 0, (
+        f"FAQ-02: no chunks must be present when nothing matches; got {result!r}"
+    )
+    assert next_node is None, "FAQ handler must return next_node=None on not-found"
+
+
+# ---------------------------------------------------------------------------
+# W1: Greeting routing tools — route_to_faq and route_to_booking
+# ---------------------------------------------------------------------------
+
+
+async def test_greeting_routes_to_faq():
+    """W1: build_greeting_node exposes route_to_faq; handler returns build_faq_node NodeConfig.
+
+    The route_to_faq FlowsFunctionSchema handler must return (result, faq_node)
+    where faq_node is a non-None NodeConfig dict — ensuring the LLM can transition
+    from greeting to the FAQ node via a tool call (not implicit prose routing).
+    """
+    from src.db.seed_demo import build_demo_tenant
+
+    tenant = build_demo_tenant()
+    greeting_node = build_greeting_node(tenant)
+
+    # greeting node must expose routing tools
+    assert len(greeting_node["functions"]) > 0, (
+        "W1: build_greeting_node must expose routing tools (functions list non-empty)"
+    )
+    fn_names = [f.name for f in greeting_node["functions"]]
+    assert "route_to_faq" in fn_names, (
+        f"W1: build_greeting_node must expose 'route_to_faq'; found {fn_names}"
+    )
+
+    # Call the route_to_faq handler directly
+    route_faq_schema = next(f for f in greeting_node["functions"] if f.name == "route_to_faq")
+    fm = _make_flow_manager(state={"tenant": tenant, "db_path": ":memory:"})
+
+    result, next_node = await route_faq_schema.handler({"reason": "cliente ha una domanda"}, fm)
+
+    assert next_node is not None, (
+        "W1: route_to_faq handler must return a non-None next_node (faq NodeConfig)"
+    )
+    assert isinstance(next_node, dict), (
+        f"W1: next_node must be a NodeConfig dict; got {type(next_node)}"
+    )
+    assert next_node.get("name") == "faq", (
+        f"W1: next_node must be the FAQ node (name='faq'); got {next_node.get('name')!r}"
+    )
+
+
+async def test_greeting_routes_to_booking():
+    """W1: build_greeting_node exposes route_to_booking; handler returns booking NodeConfig.
+
+    The route_to_booking FlowsFunctionSchema handler must return (result, booking_node)
+    where booking_node is a non-None NodeConfig dict with name='booking'.
+    """
+    from src.db.seed_demo import build_demo_tenant
+
+    tenant = build_demo_tenant()
+    greeting_node = build_greeting_node(tenant)
+
+    fn_names = [f.name for f in greeting_node["functions"]]
+    assert "route_to_booking" in fn_names, (
+        f"W1: build_greeting_node must expose 'route_to_booking'; found {fn_names}"
+    )
+
+    route_booking_schema = next(
+        f for f in greeting_node["functions"] if f.name == "route_to_booking"
+    )
+    fm = _make_flow_manager(state={"tenant": tenant, "db_path": ":memory:"})
+
+    result, next_node = await route_booking_schema.handler(
+        {"reason": "cliente vuole prenotare"}, fm
+    )
+
+    assert next_node is not None, (
+        "W1: route_to_booking handler must return a non-None next_node (booking NodeConfig)"
+    )
+    assert isinstance(next_node, dict), (
+        f"W1: next_node must be a NodeConfig dict; got {type(next_node)}"
+    )
+    assert next_node.get("name") == "booking", (
+        f"W1: next_node must be the booking node (name='booking'); got {next_node.get('name')!r}"
+    )
+
+
+def test_faq_node_tools_isolation():
+    """build_faq_node exposes ONLY faq_lookup; booking node has no faq tool (D-13 tool isolation)."""
+    from src.db.seed_demo import build_demo_tenant
+
+    tenant = build_demo_tenant()
+    faq_node = build_faq_node(tenant)
+    booking_node = build_booking_node(tenant)
+
+    faq_tool_names = [f.name for f in faq_node["functions"]]
+    booking_tool_names = [f.name for f in booking_node["functions"]]
+
+    assert faq_tool_names == ["faq_lookup"], (
+        f"build_faq_node must expose ONLY 'faq_lookup'; got {faq_tool_names}"
+    )
+    assert "faq_lookup" not in booking_tool_names, (
+        f"booking node must NOT expose 'faq_lookup'; got {booking_tool_names}"
     )

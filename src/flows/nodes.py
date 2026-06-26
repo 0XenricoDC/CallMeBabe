@@ -1,8 +1,9 @@
-"""Pipecat Flows node builders — greeting / booking / end nodes (D-13).
+"""Pipecat Flows node builders — greeting / booking / faq / end nodes (D-13).
 
 Each builder returns a NodeConfig dict.  Nodes expose only the tools they need:
-- greeting node: no tools (prevents stray tool calls; routing tools added in Plan 02-04)
+- greeting node: route_to_faq + route_to_booking (explicit routing — W1)
 - booking node: collect_booking_info + confirm_booking + correct_booking_field
+- faq node: faq_lookup ONLY (no booking tools — D-13 tool isolation)
 - end node: no tools (spoken confirmation text lives ONLY here — BOOK-05 gating)
 
 CRITICAL (from RESEARCH.md §Pattern 1, verified against pipecat_flows 1.3.0 source):
@@ -10,9 +11,10 @@ CRITICAL (from RESEARCH.md §Pattern 1, verified against pipecat_flows 1.3.0 sou
 - `functions` list contains FlowsFunctionSchema instances
 - Handler signature: async def h(args: FlowArgs, fm: FlowManager) -> (result, NodeConfig | None)
 
-NOTE: build_greeting_node currently exposes `functions=[]`.
-Plan 02-04 (Wave 1) extends this list with `route_to_faq`/`route_to_booking`
-transition tools — the structure is kept ready for a one-line addition.
+W1 routing:
+- build_greeting_node exposes route_to_faq and route_to_booking tool calls
+  so the LLM can explicitly transition to either the FAQ or booking node.
+- Both transitions are tool-driven (not implicit prose routing per W1 requirement).
 """
 
 from __future__ import annotations
@@ -21,12 +23,20 @@ from src.config.tenant_config import TenantConfig
 
 
 def build_greeting_node(tenant: TenantConfig) -> dict:
-    """Opening node — no booking tools exposed; LLM greets and asks how to help.
+    """Opening node — exposes routing tools: route_to_faq and route_to_booking (W1).
 
-    functions=[] here prevents stray tool calls at greeting.
-    Plan 02-04 will add routing tools to this list so the LLM can
-    transition to the booking or FAQ node.
+    The LLM must use a routing tool to leave the greeting node:
+    - route_to_faq: for questions about hours, address, prices, menu, services
+    - route_to_booking: for reservation requests
+
+    Tool-driven routing (W1): the LLM cannot implicitly transition; it must call
+    a routing tool whose handler returns the target NodeConfig.
     """
+    from src.flows.functions import (
+        build_route_to_faq_schema,
+        build_route_to_booking_schema,
+    )
+
     return {
         "name": "greeting",
         "role_message": (
@@ -40,12 +50,16 @@ def build_greeting_node(tenant: TenantConfig) -> dict:
                 "role": "user",
                 "content": (
                     "Accogli il cliente con calore e chiedi come puoi aiutarlo. "
-                    "Se vuole prenotare, usa collect_booking_info. "
-                    "Se fa domande generali, usa faq_lookup."
+                    "Se ha una domanda (orari, indirizzo, prezzi, menu, servizi), "
+                    "chiama route_to_faq. "
+                    "Se vuole prenotare un tavolo, chiama route_to_booking."
                 ),
             }
         ],
-        "functions": [],  # no tools at greeting — prevents stray tool calls
+        "functions": [
+            build_route_to_faq_schema(),
+            build_route_to_booking_schema(),
+        ],
     }
 
 
@@ -107,6 +121,52 @@ def build_booking_node(tenant: TenantConfig) -> dict:
         ],
         # pre_actions marker for Plan 03 per-node model override (D-19 — inert until then)
         "pre_actions": [{"type": "switch_llm_to_sonnet"}],
+    }
+
+
+def build_faq_node(tenant: TenantConfig | None = None) -> dict:
+    """FAQ node — exposes ONLY faq_lookup (D-13 tool isolation, FAQ-01..03).
+
+    Grounding rule (FAQ-02, D-08): the LLM answers ONLY from the faq_lookup result
+    (config fields or FTS5 chunks).  When found=False, it must speak the D-08 phrase:
+    'Non ho questa informazione al momento, posso prendere nota e farla ricontattare.'
+
+    No booking tools exposed here — the FAQ node is strictly for information retrieval.
+    Per-tenant voice persona (Lei form) preserved.
+    """
+    from src.flows.functions import build_faq_lookup_schema
+
+    business_name = tenant.business_name if tenant else "il ristorante"
+    return {
+        "name": "faq",
+        "role_message": (
+            f"Sei la receptionist di {business_name}. "
+            "Dai del Lei al cliente. "
+            "Parla in italiano naturale. "
+            "Risposte brevi ed essenziali (D-20). "
+            "REGOLA DI GROUNDING (FAQ-02): rispondi SOLO con informazioni "
+            "restituite dallo strumento faq_lookup o dalla configurazione. "
+            "Se lo strumento restituisce found=false, ammetti onestamente di non avere "
+            "quella informazione e offri di prendere nota: "
+            "'Non ho questa informazione al momento, posso prendere nota e farla ricontattare.' "
+            "Non inventare mai dati (D-08)."
+        ),
+        "task_messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Il cliente ha una domanda. "
+                    "Usa faq_lookup per cercare la risposta. "
+                    "Se faq_lookup restituisce source='config', rispondi con il valore di 'answer'. "
+                    "Se faq_lookup restituisce found=true, usa i 'chunks' per costruire la risposta. "
+                    "Se faq_lookup restituisce found=false, di' onestamente che non hai "
+                    "quell'informazione e offri di prendere nota per farla ricontattare."
+                ),
+            }
+        ],
+        "functions": [
+            build_faq_lookup_schema(),
+        ],
     }
 
 
