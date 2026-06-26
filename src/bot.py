@@ -28,6 +28,8 @@ from pipecat.workers.runner import WorkerRunner
 from pipecat_flows import FlowManager
 
 from src.booking.repository import ReservationRepository
+from src.calendar.google_provider import GoogleCalendarProvider
+from src.calendar.memory_provider import InMemoryCalendarProvider
 from src.config.repository import TenantRepository
 from src.config.tenant_config import TenantConfig
 from src.flows.nodes import build_greeting_node
@@ -282,12 +284,28 @@ async def bot(runner_args: RunnerArguments) -> None:
     # Override db_path now that we have the real repo path from TenantRepository
     flow_manager.state["db_path"] = repo_path
 
+    # Wire the real CalendarProvider now that the tenant is loaded. setup_flow()
+    # leaves state["calendar_provider"] = None; without this the booking handler
+    # calls create_event on None, which surfaces to the caller as the spurious
+    # "il servizio non è disponibile" (the calendar-unavailable branch).
+    # - Google credentials + a tenant calendar_id  -> real GoogleCalendarProvider
+    #   (resolver maps this tenant_id -> its calendar_id; T-03/D-10 isolation).
+    # - Otherwise                                  -> InMemoryCalendarProvider so
+    #   booking still completes end-to-end in dev without Google setup.
+    google_cred = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    resolved_calendar_id = tenant.calendar_id or os.getenv("GOOGLE_CALENDAR_ID_DEMO")
+    if google_cred and resolved_calendar_id:
+        calendar_provider = GoogleCalendarProvider(
+            calendar_id_resolver={tenant.id: resolved_calendar_id}
+        )
+    else:
+        calendar_provider = InMemoryCalendarProvider()
+    flow_manager.state["calendar_provider"] = calendar_provider
+
     # D-18 / B2: register abandonment hook — fires on call termination with an
     # unconfirmed booking; saves a bozza draft that is NEVER written to Calendar.
-    # The calendar_provider is referenced from state (None in dev is safe: the
-    # abandonment handler only guards create_event which it never calls).
+    # The abandonment handler only guards create_event (which it never calls).
     reservation_repo = ReservationRepository(db_path=repo_path)
-    calendar_provider = flow_manager.state.get("calendar_provider")
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(transport_obj, client):
