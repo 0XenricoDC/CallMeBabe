@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 Phase: 02 (booking-calendar-faq) — EXECUTING
 Plan: 4 of 4
 Status: Ready to execute
-Last activity: 2026-06-26
+Last activity: 2026-06-26 - Completed quick task 260626-sax: fix anno data 2025 + numeri telefono alieni
 
 Progress: [█████████░] 86%
 
@@ -109,6 +109,12 @@ None yet.
 
 - Phase 4 (Telnyx): HIGH research flag from SUMMARY.md — plan `/gsd:plan-phase 4` should use `--research-phase`.
 - Phase 2 (Booking/Calendar): MEDIUM research flag — Google Calendar freebusy inversion and transactional reserve schema have documented subtleties.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260626-sax | Fix booking flow: anno data 2025 + numeri telefono alieni nel readback | 2026-06-26 | (see log) | [260626-sax-fix-booking-flow-anno-data-2025-numeri-t](./quick/260626-sax-fix-booking-flow-anno-data-2025-numeri-t/) |
 
 ## Deferred Items
 
