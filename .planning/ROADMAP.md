@@ -14,7 +14,7 @@ Five milestones build the system inside-out, matching the dependency graph of th
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Local Voice Loop** - Italian conversational agent working locally on mic/headset with streaming pipeline, barge-in, personalized greeting, and latency instrumentation (completed 2026-06-24)
-- [ ] **Phase 2: Booking + Calendar + FAQ** - Structured Pipecat Flows booking with real Google Calendar write, capacity check, spoken read-back/confirm gating, and per-tenant RAG FAQ
+- [x] **Phase 2: Booking + Calendar + FAQ** - Structured Pipecat Flows booking with real Google Calendar write, capacity check, spoken read-back/confirm gating, and per-tenant RAG FAQ (completed 2026-06-26)
 - [ ] **Phase 3: Handoff + Summary + Notifications** - Operator transfer from any point, end-of-call log and summary, multi-channel owner notification, full provider-failure fallback chain with dead-air watchdog
 - [ ] **Phase 4: Telnyx Telephony** - Real inbound Italian calls via Telnyx, DID-to-tenant routing, all M1-M3 behaviors verified on the 8kHz phone path
 - [ ] **Phase 5: Multi-Tenant + Onboarding** - Full per-client config isolation, tenant_id-scoped persistence, onboarding CLI, and per-client credential store
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
-| 2. Booking + Calendar + FAQ | 4/4 | Checkpoint (human verify) |  |
+| 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
