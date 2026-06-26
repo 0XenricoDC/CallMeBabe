@@ -865,24 +865,24 @@ calendar_id: Optional[str] = None  # Google Calendar id for this tenant's calend
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Model IDs: `claude-sonnet-4-6` vs `claude-sonnet-4-5` vs current Sonnet 4**
+1. **Model IDs: `claude-sonnet-4-6` vs `claude-sonnet-4-5` vs current Sonnet 4** — RESOLVED: addressed by Plan 02-01 Task 1 (`tests/test_model_ids.py` verifies both IDs against `client.models.list()`; verified/corrected IDs recorded in 02-01-SUMMARY for Plans 02/03).
    - What we know: Phase 1 STATE.md uses `claude-haiku-4-5` and mentions `claude-sonnet-4-6` for D-19 (booking path).
    - What's unclear: Whether `claude-sonnet-4-6` is the correct ID for the current Claude Sonnet model (CLAUDE.md flags model IDs as MEDIUM confidence).
    - Recommendation: Planner adds a Wave 0 task to verify current Anthropic model IDs against `anthropic.models.list()` or the Anthropic console before hardcoding.
 
-2. **`calendar_id` for demo tenant: which calendar does the demo restaurant share?**
+2. **`calendar_id` for demo tenant: which calendar does the demo restaurant share?** — RESOLVED: Plan 02-01 adds `GOOGLE_CALENDAR_ID_DEMO` to `.env.example`; all automated tests use `InMemoryCalendarProvider` (Plan 02-02), so no real calendar is needed in CI. The live calendar is exercised only in the Plan 02-04 manual verification checkpoint.
    - What we know: D-09 requires the owner to share their Google Calendar with the service-account email.
    - What's unclear: For the demo/test flow, a test calendar or a mock is needed. No real restaurant calendar will be available in CI.
    - Recommendation: Use `InMemoryCalendarProvider` for all automated tests (D-12); add `.env.example` key `GOOGLE_CALENDAR_ID_DEMO` with a placeholder.
 
-3. **`BEGIN IMMEDIATE` behavior with multiple aiosqlite connections**
+3. **`BEGIN IMMEDIATE` behavior with multiple aiosqlite connections** — RESOLVED: Plan 02-01 defines `tests/test_reservation_repo.py::test_concurrent_booking` (SC3) and Plan 02-02 Task 2 implements `try_reserve_slot` with BEGIN IMMEDIATE; the documented fallback (single shared connection + asyncio.Lock) is specified in 02-02 Task 2 if the concurrency test fails.
    - What we know: aiosqlite wraps sqlite3 in a thread pool executor; `BEGIN IMMEDIATE` is standard SQLite.
    - What's unclear: Whether two `async with aiosqlite.connect(same_db_path)` coroutines running concurrently will properly serialize on `BEGIN IMMEDIATE` or silently serialize via GIL.
    - Recommendation: Add a `test_concurrent_booking` integration test with `asyncio.gather` of two concurrent booking attempts on the same slot. This test is SC3 verification. If it fails, fall back to a single shared `aiosqlite` connection with connection-level serialization.
 
-4. **`dateparser` cold-start latency**
+4. **`dateparser` cold-start latency** — RESOLVED: Plan 02-02 Task 2 imports `dateparser` at module level in `src/booking/date_parser.py` (amortizes cold start), per PATTERNS §src/booking/date_parser.py.
    - What we know: `dateparser` loads language data files on first import; this can add 100-500ms.
    - What's unclear: Whether this cold start happens at import time or first parse call, and if it blows the latency budget for the first booking turn.
    - Recommendation: Import `dateparser` at module load time (warm on first call), not inside the handler function. Or pre-parse a dummy date at startup in an async background task.
