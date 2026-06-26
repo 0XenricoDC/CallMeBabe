@@ -34,6 +34,52 @@ from src.pipeline.observers import LatencyObserver
 _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
 
 
+def make_abandonment_handler(flow_manager, reservation_repo, calendar_provider):
+    """Return an async cleanup handler for call-termination on an unconfirmed booking (D-18).
+
+    Called when a call ends (via transport on_client_disconnected or cleanup hook)
+    while a booking is still in progress (status='bozza', never confirmed).
+
+    The handler:
+    1. Reads partial booking fields from flow_manager.state
+    2. Calls reservation_repo.save_draft(...) to persist the partial record
+    3. NEVER calls calendar_provider.create_event (drafts stay out of Calendar — D-18)
+
+    Follow-up / notification for abandoned drafts is Phase 3.
+
+    Args:
+        flow_manager: active FlowManager (or compatible namespace with .state dict).
+        reservation_repo: ReservationRepository instance for save_draft.
+        calendar_provider: CalendarProvider instance — spied on in tests to assert
+                           create_event is never called.
+
+    Returns:
+        An async coroutine ``handler()`` suitable for call-termination cleanup.
+    """
+
+    async def on_call_abandoned() -> None:
+        state = flow_manager.state
+        booking_slot = state.get("booking_slot") or {}
+        customer = state.get("customer") or {}
+        tenant_id: str = state.get("tenant_id", "")
+
+        # Only save a draft if at least a tenant_id is known
+        if not tenant_id:
+            return
+
+        await reservation_repo.save_draft(
+            tenant_id=tenant_id,
+            slot_date=booking_slot.get("date"),
+            slot_time=booking_slot.get("time_slot"),
+            covers=booking_slot.get("covers"),
+            name=customer.get("name"),
+            phone=customer.get("phone"),
+        )
+        # create_event is intentionally NEVER called for abandoned/draft bookings (D-18)
+
+    return on_call_abandoned
+
+
 def make_greeting_handler(worker: PipelineWorker, tenant: TenantConfig):
     """Return an async event handler that queues the tenant greeting on connect.
 
