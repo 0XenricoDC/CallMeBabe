@@ -28,12 +28,50 @@ from datetime import date, timedelta
 from loguru import logger
 from pipecat_flows import FlowsFunctionSchema
 
-from src.booking.date_parser import slot_to_datetimes
+from src.booking.date_parser import normalize_future_date, slot_to_datetimes
 from src.booking.repository import ReservationRepository
 from src.kb.fts import SQLiteFTSKnowledgeBase
 
 # D-05: how many days forward to search when the requested day has no free slots
 MAX_ALT_DAYS = 3
+
+# --- Read-back pronunciation helpers (D-15) --------------------------------
+# The phone/date in the read-back are formatted server-side so the spoken output
+# does not depend on the LLM. The phone is spelled as Italian *words* (not just
+# digits separated by spaces) because the model would otherwise recompact the
+# digits into one run-on, "alien"-sounding number before the TTS ever sees them.
+_DIGIT_WORDS_IT = {
+    "0": "zero", "1": "uno", "2": "due", "3": "tre", "4": "quattro",
+    "5": "cinque", "6": "sei", "7": "sette", "8": "otto", "9": "nove",
+}
+
+_MONTHS_IT = (
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+)
+
+
+def _spell_phone_it(phone: str) -> str:
+    """Spell a phone number digit-by-digit as Italian words ("tre, quattro, ...").
+
+    Words cannot be recompacted by the LLM into a single number, so the TTS
+    pronounces each digit clearly (D-15). Non-digit characters are dropped.
+    """
+    return ", ".join(_DIGIT_WORDS_IT[ch] for ch in str(phone) if ch.isdigit())
+
+
+def _format_date_it(iso_date: str) -> str:
+    """Format an ISO date (YYYY-MM-DD) as natural Italian, e.g. "8 luglio 2026".
+
+    Falls back to the raw string if it cannot be parsed (never raises).
+    """
+    from datetime import date as _date
+
+    try:
+        d = _date.fromisoformat(iso_date)
+    except (ValueError, TypeError):
+        return iso_date
+    return f"{d.day} {_MONTHS_IT[d.month - 1]} {d.year}"
 
 # ---------------------------------------------------------------------------
 # FlowsFunctionSchema builders
@@ -59,7 +97,11 @@ def build_collect_booking_schema() -> FlowsFunctionSchema:
         properties={
             "date": {
                 "type": "string",
-                "description": "Data della prenotazione in formato ISO 8601 (es. 2025-07-08)",
+                "description": (
+                    "Data della prenotazione in formato ISO 8601 YYYY-MM-DD "
+                    "(es. AAAA-07-08). Usa l'anno corrente o futuro indicato nel "
+                    "contesto, mai un anno passato."
+                ),
             },
             "time_slot": {
                 "type": "string",
@@ -148,8 +190,12 @@ async def handle_collect_booking_info(args: dict, fm) -> tuple[dict, None]:
     Returns (result, None) — stays in booking node for read-back (BOOK-03).
     The confirm/end transition must NOT happen at collect time.
     """
+    # The LLM has no notion of the current date, so it routinely emits a past year
+    # (e.g. 2025 when the caller only said "8 luglio"). Roll any past date forward
+    # to its nearest future occurrence server-side (mirrors PREFER_DATES_FROM=future).
+    norm_date = normalize_future_date(args["date"])
     fm.state["booking_slot"] = {
-        "date": args["date"],
+        "date": norm_date,
         "time_slot": args["time_slot"],
         "covers": args["covers"],
     }
@@ -160,11 +206,13 @@ async def handle_collect_booking_info(args: dict, fm) -> tuple[dict, None]:
     # Build the read-back string server-side so it is deterministic (BOOK-03/D-15)
     # rather than relying on the LLM to remember to read everything back — the
     # previous prompt-only approach let the model skip the read-back under
-    # interruptions/latency. The phone is spelled digit-by-digit (D-15) so the TTS
-    # pronounces each digit clearly instead of one run-on, alien-sounding number.
-    phone_spelled = " ".join(ch for ch in str(args["phone"]) if ch.isdigit())
+    # interruptions/latency. The phone is spelled as Italian words and the date in
+    # natural Italian (D-15) so the TTS pronounces them clearly instead of a run-on,
+    # alien-sounding number / raw ISO string.
+    phone_spelled = _spell_phone_it(args["phone"])
+    date_it = _format_date_it(norm_date)
     readback = (
-        f"Le rileggo i dati: prenotazione per il {args['date']} "
+        f"Le rileggo i dati: prenotazione per il {date_it} "
         f"alle {args['time_slot']}, per {args['covers']} persone, "
         f"a nome {args['name']}, numero di telefono {phone_spelled}. "
         "È tutto corretto?"
@@ -326,6 +374,11 @@ async def correct_booking_field(args: dict, fm) -> tuple[dict, None]:
             "error": f"Campo '{field_name}' non valido. "
             f"Campi consentiti: {', '.join(_ALL_BOOKING_FIELDS)}"
         }, None
+
+    # A corrected date can again come back with a past year from the LLM — roll it
+    # forward to the nearest future occurrence, same as at collect time.
+    if field_name == "date":
+        new_value = normalize_future_date(str(new_value))
 
     # Update ONLY the named field in the correct sub-dict — do not clear other fields (D-17)
     if field_name in _BOOKING_SLOT_FIELDS:

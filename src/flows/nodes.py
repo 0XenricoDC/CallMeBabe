@@ -19,7 +19,12 @@ W1 routing:
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from src.config.tenant_config import TenantConfig
+
+_ROME_TZ = ZoneInfo("Europe/Rome")
 
 
 def build_greeting_node(tenant: TenantConfig) -> dict:
@@ -83,10 +88,16 @@ def build_booking_node(tenant: TenantConfig) -> dict:
         build_correct_booking_field_schema,
     )
 
+    # Inject today's date (Europe/Rome) so the LLM resolves relative dates like
+    # "8 luglio" to the correct year instead of defaulting to a past one.
+    oggi = datetime.now(_ROME_TZ).strftime("%Y-%m-%d")
     return {
         "name": "booking",
         "role_message": (
             f"Sei la receptionist di {tenant.business_name}. "
+            f"La data di oggi è {oggi} (fuso Europe/Rome). "
+            "Quando il cliente indica solo giorno e mese, usa l'anno corrente; "
+            "se quella data è già passata, usa l'anno successivo. "
             "Stai raccogliendo i dati per una prenotazione. "
             "Dai del Lei al cliente. "
             "Risposte brevi ed essenziali (D-20). "
