@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context updated (conversation-design decisions)
-last_updated: "2026-06-26T07:14:09.117Z"
-last_activity: 2026-06-26 -- Phase 02 planning complete
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-06-26T07:45:22.866Z"
+last_activity: 2026-06-26
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
   percent: 20
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** Una chiamata reale in italiano viene gestita end-to-end dal bot (saluto personalizzato, conversazione naturale a bassa latenza, azione completata) senza intervento umano e senza riscrivere codice per un nuovo cliente.
-**Current focus:** Phase 01 — local-voice-loop
+**Current focus:** Phase 02 — booking-calendar-faq
 
 ## Current Position
 
-Phase: 01 (local-voice-loop) — EXECUTING
-Plan: 3 of 3
+Phase: 02 (booking-calendar-faq) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-26 -- Phase 02 planning complete
+Last activity: 2026-06-26
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 01 P01 | 35 | 4 tasks | 18 files |
 | Phase 01 P02 | 6 | 2 tasks | 5 files |
 | Phase 01 P03 | 180 | 4 tasks | 7 files |
+| Phase 02-booking-calendar-faq P01 | 35 | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [01-03]: Latency turn-end via built-in TurnTrackingObserver.on_turn_ended; metrics routed on metric.processor (TTS-first to avoid 'stt' inside 'ElevenLabsTTSService'); budget = response_ms (stt+llm_ttft+tts_ttfb), not total turn_ms.
 - [Phase ?]: [01-03]: TTS switched to eleven_turbo_v2_5 + Language.IT — only flash/turbo v2_5 honor the language code in pipecat 1.4.0; eliminates the ignored-language warning.
 - [Phase ?]: [01-03]: UAT (future optimisation, out of scope): live response latency ~1.7s warm / ~3.3s cold, dominated by Claude TTFT + STT, over the 800ms budget; Anthropic prompt caching not active (cache_read=0).
+- [Phase ?]: [02-01]: Anthropic model IDs claude-haiku-4-5 (default) and claude-sonnet-4-6 (booking D-19) carried from Phase 1; test_model_ids.py skips without API key
+- [Phase ?]: [02-01]: Dev DB migration for calendar_id: delete centralino.db and re-seed (no ALTER TABLE in schema.sql for idempotency per Pitfall 5)
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-25T20:52:18.825Z
-Stopped at: Phase 2 context updated (conversation-design decisions)
-Resume file: .planning/phases/02-booking-calendar-faq/02-CONTEXT.md
+Last session: 2026-06-26T07:45:22.848Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

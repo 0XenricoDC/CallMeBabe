@@ -17,18 +17,18 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 
 ### Prenotazioni (Booking)
 
-- [ ] **BOOK-01**: Il bot raccoglie in modo strutturato i dati di una prenotazione (data, ora, n. persone o servizio, nome, telefono) tramite un flusso Pipecat Flows
-- [ ] **BOOK-02**: Il bot verifica la disponibilità/capienza prima di confermare la prenotazione, usando una capienza autoritativa nel DB del progetto
-- [ ] **BOOK-03**: Il bot ripete al chiamante i dati raccolti (read-back) e attende conferma prima di scrivere la prenotazione
-- [ ] **BOOK-04**: Il bot scrive la prenotazione confermata su Google Calendar reale tramite l'interfaccia `CalendarProvider`
-- [ ] **BOOK-05**: Il bot conferma a voce la prenotazione solo dopo che la scrittura su calendario è riuscita (nessuna conferma fantasma)
-- [ ] **BOOK-06**: Una prenotazione confermata viene persistita nel DB del progetto (record reservation)
+- [x] **BOOK-01**: Il bot raccoglie in modo strutturato i dati di una prenotazione (data, ora, n. persone o servizio, nome, telefono) tramite un flusso Pipecat Flows
+- [x] **BOOK-02**: Il bot verifica la disponibilità/capienza prima di confermare la prenotazione, usando una capienza autoritativa nel DB del progetto
+- [x] **BOOK-03**: Il bot ripete al chiamante i dati raccolti (read-back) e attende conferma prima di scrivere la prenotazione
+- [x] **BOOK-04**: Il bot scrive la prenotazione confermata su Google Calendar reale tramite l'interfaccia `CalendarProvider`
+- [x] **BOOK-05**: Il bot conferma a voce la prenotazione solo dopo che la scrittura su calendario è riuscita (nessuna conferma fantasma)
+- [x] **BOOK-06**: Una prenotazione confermata viene persistita nel DB del progetto (record reservation)
 
 ### FAQ / Knowledge base (FAQ)
 
-- [ ] **FAQ-01**: Il bot risponde a domande frequenti (orari, indirizzo, servizi, prezzi) attingendo alla knowledge base del cliente via RAG semplice
-- [ ] **FAQ-02**: Le risposte FAQ sono ancorate ai contenuti della KB del cliente; il bot non inventa dati (orari/prezzi assenti → non risponde a caso)
-- [ ] **FAQ-03**: La knowledge base è per-cliente (ogni cliente ha i propri contenuti FAQ)
+- [x] **FAQ-01**: Il bot risponde a domande frequenti (orari, indirizzo, servizi, prezzi) attingendo alla knowledge base del cliente via RAG semplice
+- [x] **FAQ-02**: Le risposte FAQ sono ancorate ai contenuti della KB del cliente; il bot non inventa dati (orari/prezzi assenti → non risponde a caso)
+- [x] **FAQ-03**: La knowledge base è per-cliente (ogni cliente ha i propri contenuti FAQ)
 
 ### Trasferimento a operatore (Handoff)
 
@@ -125,15 +125,15 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 | VOICE-05 | Phase 1 | Complete |
 | REL-01 | Phase 1 | Complete |
 | SETUP-01 | Phase 1 | Complete |
-| BOOK-01 | Phase 2 | Pending |
-| BOOK-02 | Phase 2 | Pending |
-| BOOK-03 | Phase 2 | Pending |
-| BOOK-04 | Phase 2 | Pending |
-| BOOK-05 | Phase 2 | Pending |
-| BOOK-06 | Phase 2 | Pending |
-| FAQ-01 | Phase 2 | Pending |
-| FAQ-02 | Phase 2 | Pending |
-| FAQ-03 | Phase 2 | Pending |
+| BOOK-01 | Phase 2 | Complete |
+| BOOK-02 | Phase 2 | Complete |
+| BOOK-03 | Phase 2 | Complete |
+| BOOK-04 | Phase 2 | Complete |
+| BOOK-05 | Phase 2 | Complete |
+| BOOK-06 | Phase 2 | Complete |
+| FAQ-01 | Phase 2 | Complete |
+| FAQ-02 | Phase 2 | Complete |
+| FAQ-03 | Phase 2 | Complete |
 | HAND-01 | Phase 3 | Pending |
 | HAND-02 | Phase 3 | Pending |
 | HAND-03 | Phase 3 | Pending |
