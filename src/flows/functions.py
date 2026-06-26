@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
+from loguru import logger
 from pipecat_flows import FlowsFunctionSchema
 
 from src.booking.date_parser import slot_to_datetimes
@@ -266,9 +267,16 @@ async def handle_confirm_booking(args: dict, fm) -> tuple[dict, dict | None]:
             title=event_title,
             details=event_details,
         )
-    except Exception:
-        # Calendar unavailable — stay in booking node, no false confirmation (T-02-04)
-        # NOTE: PII (phone/name) intentionally NOT logged here (T-02-07)
+    except Exception as exc:
+        # Calendar write failed — stay in booking node, no false confirmation (T-02-04).
+        # PII (phone/name) is intentionally NOT logged (T-02-07). Google API errors carry
+        # the response status, not our request body, so the type/message is safe to log
+        # and is essential for diagnosing why a confirmed-sounding booking never lands
+        # on the calendar (e.g. 403 ACL, disabled API, wrong calendar_id).
+        logger.error(
+            f"Calendar create_event failed for tenant {tenant_id!r}: "
+            f"{type(exc).__name__}: {exc}"
+        )
         return {"available": False, "error": "calendario non disponibile"}, None
 
     # --- Step 4: Confirm in DB (only reached if Calendar write succeeded) ---
