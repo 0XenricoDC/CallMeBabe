@@ -17,7 +17,7 @@ Guida operativa rapida: come avviare, provare e testare il bot.
 .venv/Scripts/python main.py --tenant=demo
 
 # 3. apri nel browser e consenti il microfono:
-#    http://localhost:7860/prebuilt/
+#    http://localhost:7860/client/
 ```
 
 Il bot ti saluta da solo in italiano (Ristorante Da Mario), poi puoi conversarci.

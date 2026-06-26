@@ -7,3 +7,6 @@ logs/
 
 # Google service-account key (private key — never commit). Put new tenant keys here too.
 boreal-sweep-457713-v6-4c7447d338f1.json
+
+# Local LanceDB vector store (runtime data — not source)
+lancedb/
