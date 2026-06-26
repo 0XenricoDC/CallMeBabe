@@ -75,7 +75,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-03-PLAN.md — Second slice: slot-full alternatives (same-day + next-day) + FlowManager wired into the pipeline with per-node Sonnet override (BOOK-02/04/05, SC2, D-19)
+- [x] 02-03-PLAN.md — Second slice: slot-full alternatives (same-day + next-day) + FlowManager wired into the pipeline with per-node Sonnet override (BOOK-02/04/05, SC2, D-19)
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
-| 2. Booking + Calendar + FAQ | 2/4 | In Progress|  |
+| 2. Booking + Calendar + FAQ | 3/4 | In Progress|  |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
