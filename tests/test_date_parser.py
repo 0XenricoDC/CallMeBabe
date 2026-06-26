@@ -10,12 +10,12 @@ These tests will fail with ImportError until Plan 02-02 creates the module.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 from zoneinfo import ZoneInfo
 
-from src.booking.date_parser import parse_italian_date  # RED: does not exist yet
+from src.booking.date_parser import normalize_future_date, parse_italian_date
 
 ROME_TZ = ZoneInfo("Europe/Rome")
 
@@ -75,6 +75,40 @@ def test_unparseable_returns_none():
         f"parse_italian_date must return None for unparseable input; got {result!r}. "
         "The caller uses None as a signal to re-prompt the user."
     )
+
+
+def test_normalize_future_date_bumps_past_year():
+    """A date in the past is rolled forward to its nearest future occurrence.
+
+    The LLM emits ISO dates with no notion of "now" and routinely picks a past
+    year; normalize_future_date corrects that server-side (PREFER_DATES_FROM=future).
+    """
+    today = date(2026, 6, 26)
+    # Past year, day/month still ahead in the year → same month/day, year bumped to 2026.
+    assert normalize_future_date("2025-07-08", today=today) == "2026-07-08"
+    # Past year AND day/month already gone this year → bumped to next year.
+    assert normalize_future_date("2024-01-05", today=today) == "2027-01-05"
+
+
+def test_normalize_future_date_leaves_future_untouched():
+    """A date already today-or-later is returned unchanged."""
+    today = date(2026, 6, 26)
+    assert normalize_future_date("2026-06-26", today=today) == "2026-06-26"  # today
+    assert normalize_future_date("2026-12-31", today=today) == "2026-12-31"  # future
+
+
+def test_normalize_future_date_handles_garbage():
+    """Unparseable input is returned unchanged (never raises)."""
+    assert normalize_future_date("not-a-date") == "not-a-date"
+    assert normalize_future_date("") == ""
+
+
+def test_normalize_future_date_leap_day():
+    """29 Feb in a past leap year snaps cleanly into a future year (no crash)."""
+    today = date(2026, 6, 26)
+    # 2024-02-29 is past; nearest future leap day handling must not raise.
+    result = normalize_future_date("2024-02-29", today=today)
+    assert date.fromisoformat(result) >= today
 
 
 def test_absolute_date_with_time():

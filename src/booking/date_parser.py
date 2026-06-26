@@ -13,7 +13,7 @@ cold-start latency — loading the locale data on first import can take ~0.5s
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import dateparser  # imported at module level — amortizes cold start (RESEARCH §OQ4)
 from zoneinfo import ZoneInfo
@@ -44,6 +44,43 @@ def parse_italian_date(text: str) -> datetime | None:
     """
     result = dateparser.parse(text, languages=_LANGUAGES, settings=PARSE_SETTINGS)
     return result  # timezone-aware Europe/Rome, or None if unparseable
+
+
+def normalize_future_date(iso_date: str, *, today: date | None = None) -> str:
+    """Roll an ISO date (YYYY-MM-DD) forward to its nearest future occurrence.
+
+    The LLM fills the booking `date` field as an ISO string but has no notion of
+    the current date, so it routinely emits a *past* year (e.g. 2025 when the
+    caller only said "8 luglio" and it is already 2026). This mirrors dateparser's
+    `PREFER_DATES_FROM='future'`: if `iso_date` is strictly before `today`
+    (Europe/Rome), bump the year until it lands today or later.
+
+    Defensive: unparseable input is returned unchanged (the caller will surface a
+    re-prompt elsewhere) — never raises. Handles the 29 Feb → non-leap-year edge
+    by snapping to 28 Feb.
+
+    Args:
+        iso_date: ISO date string, e.g. "2025-07-08".
+        today: override for "now" (testing). Defaults to today in Europe/Rome.
+
+    Returns:
+        The (possibly year-corrected) ISO date string.
+    """
+    try:
+        d = date.fromisoformat(iso_date)
+    except (ValueError, TypeError):
+        return iso_date
+
+    if today is None:
+        today = datetime.now(ROME_TZ).date()
+
+    while d < today:
+        try:
+            d = d.replace(year=d.year + 1)
+        except ValueError:
+            # 29 Feb in a non-leap target year — snap to 28 Feb of that year.
+            d = d.replace(month=2, day=28, year=d.year + 1)
+    return d.isoformat()
 
 
 def slot_to_datetimes(
