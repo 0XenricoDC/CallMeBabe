@@ -79,7 +79,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 02-04-PLAN.md — FAQ slice: FTS5 KB + ingest + faq_lookup tool + FAQ node (hybrid config/FTS5 routing, honest not-found) + demo KB + live end-of-phase verification (FAQ-01..03, SC4/SC5)
+- [x] 02-04-PLAN.md — FAQ slice: FTS5 KB + ingest + faq_lookup tool + FAQ node (hybrid config/FTS5 routing, honest not-found) + demo KB + live end-of-phase verification (FAQ-01..03, SC4/SC5) [tasks 1-2 done; checkpoint awaiting human verify]
 **UI hint**: yes
 
 ### Phase 3: Handoff + Summary + Notifications
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
-| 2. Booking + Calendar + FAQ | 3/4 | In Progress|  |
+| 2. Booking + Calendar + FAQ | 4/4 | Checkpoint (human verify) |  |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |

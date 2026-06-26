@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02-PLAN.md
+stopped_at: Checkpoint 02-04 Task 3 (human-verify) — awaiting live E2E verification
 last_updated: "2026-06-26T08:37:01.616Z"
 last_activity: 2026-06-26
 progress:
@@ -58,6 +58,7 @@ Progress: [█████████░] 86%
 | Phase 02-booking-calendar-faq P01 | 35 | 3 tasks | 14 files |
 | Phase 02-booking-calendar-faq P02 | 15 | 3 tasks | 13 files |
 | Phase 02-booking-calendar-faq P03 | 14 | 2 tasks | 6 files |
+| Phase 02-booking-calendar-faq P04 | 20 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [02-03]
 - [Phase ?]: [02-03]
 - [Phase ?]: [02-03]
+- [Phase 02]: [02-04]: FTS5 error guard: catch OperationalError, return [] (T-02-12 natural-speech guard, simpler than pre-sanitization)
+- [Phase 02]: [02-04]: Hybrid FAQ routing: _HOURS_KEYWORDS/_SERVICES_KEYWORDS token intersection → config fields; else FTS5 (D-06)
+- [Phase 02]: [02-04]: W1 routing: build_greeting_node exposes route_to_faq + route_to_booking FlowsFunctionSchema tools (explicit tool-driven, not prose)
+- [Phase 02]: [02-04]: Ingest idempotency via DELETE WHERE tenant_id = ? before INSERT (FTS5 has no UNIQUE — only safe mechanism)
 
 ### Pending Todos
 
