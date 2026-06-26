@@ -15,6 +15,7 @@ Security (T-02-KEY): API keys read only via `os.getenv`; never logged.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -36,8 +37,28 @@ from src.pipeline.factory import (
 )
 
 
-def build_pipeline(transport, tenant: TenantConfig) -> tuple[Pipeline, LLMContext]:
-    """Assemble and return (Pipeline, LLMContext) for one call session.
+@dataclass
+class BuildResult:
+    """Named container for build_pipeline output (Plan 02-03 FlowManager seam).
+
+    Exposes llm and aggregators so bot.py can wire FlowManager without
+    re-instantiating services.  Keeps backward compatibility: callers that
+    previously destructured ``(pipeline, context)`` can add ``, _`` or
+    switch to attribute access.
+    """
+
+    pipeline: Pipeline
+    context: LLMContext
+    llm: AnthropicLLMService
+    aggregators: LLMContextAggregatorPair
+
+    def __iter__(self):
+        """Support tuple-like destructuring: ``pipeline, context = build_pipeline(...)``."""
+        return iter((self.pipeline, self.context))
+
+
+def build_pipeline(transport, tenant: TenantConfig) -> BuildResult:
+    """Assemble and return a BuildResult for one call session.
 
     Args:
         transport: A `SmallWebRTCTransport` (Phase 1) or Telnyx transport (Phase 4).
@@ -45,9 +66,9 @@ def build_pipeline(transport, tenant: TenantConfig) -> tuple[Pipeline, LLMContex
         tenant:    The validated `TenantConfig` for this tenant/call.
 
     Returns:
-        A ``(pipeline, context)`` tuple where:
-        - ``pipeline`` is ready to be passed to `PipelineWorker`.
-        - ``context`` is the `LLMContext` that accumulates conversation history.
+        A ``BuildResult`` with attributes ``pipeline``, ``context``, ``llm``,
+        and ``aggregators``.  Supports 2-tuple destructuring for backward compat:
+        ``pipeline, context = build_pipeline(transport, tenant)``
 
     Pipeline order (RESEARCH §Architecture Patterns Pattern 1):
         transport.input() → stt → aggregators.user() → llm → tts
@@ -95,4 +116,4 @@ def build_pipeline(transport, tenant: TenantConfig) -> tuple[Pipeline, LLMContex
         aggregators.assistant(),  # records assistant response in context history
     ])
 
-    return pipeline, context
+    return BuildResult(pipeline=pipeline, context=context, llm=llm, aggregators=aggregators)

@@ -57,19 +57,26 @@ def test_pipeline_builds(tenant: TenantConfig):
         mock_agg_pair.assistant.return_value = MagicMock(name="AssistantAgg")
         MockAggregators.return_value = mock_agg_pair
 
-        from src.pipeline.build import build_pipeline
+        from src.pipeline.build import BuildResult, build_pipeline
 
         transport = _make_mock_transport()
         result = build_pipeline(transport, tenant)
 
-        # Must return a 2-tuple (pipeline, context)
-        assert isinstance(result, tuple), "build_pipeline must return (pipeline, context)"
-        assert len(result) == 2
+        # Must return a BuildResult with pipeline, context, llm, aggregators
+        # (Plan 02-03: extended from 2-tuple to expose llm/aggregators for FlowManager wiring)
+        assert isinstance(result, BuildResult), (
+            f"build_pipeline must return a BuildResult; got {type(result)}"
+        )
+        # Supports 2-tuple destructuring for backward compatibility
         pipeline, ctx = result
 
         # Pipeline and context must be the mocked instances
         assert pipeline is mock_pipeline
         assert ctx is mock_ctx
+
+        # llm and aggregators also exposed (FlowManager seam — D-19)
+        assert result.llm is not None
+        assert result.aggregators is not None
 
         # Pipeline constructor must have been called once with a list
         MockPipeline.assert_called_once()

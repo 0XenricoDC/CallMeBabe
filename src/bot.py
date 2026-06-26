@@ -7,8 +7,10 @@ This module:
   3. Builds the SmallWebRTCTransport via TransportFactory (D-05).
   4. Assembles the streaming pipeline via build_pipeline() (VOICE-01).
   5. Registers on_client_connected to queue the Italian greeting (VOICE-02 / D-11).
-  6. Runs the PipelineWorker via WorkerRunner.
-  7. Attaches LatencyObserver and ErrorFallbackObserver via PipelineParams (Plan 03).
+  6. Wires FlowManager with per-node model override (D-19, Plan 02-03).
+  7. Registers on_client_disconnected to save draft on abandonment (D-18, B2).
+  8. Runs the PipelineWorker via WorkerRunner.
+  9. Attaches LatencyObserver and ErrorFallbackObserver via PipelineParams (Plan 03).
 
 Security (T-02-KEY): API keys are never logged or echoed; tenant_id comes from a
 validated CLI arg and is passed to the parameterized repository query (Plan 01-01).
@@ -18,20 +20,109 @@ from __future__ import annotations
 
 import os
 
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import LLMUpdateSettingsFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
+from pipecat.services.settings import LLMSettings
 from pipecat.workers.runner import WorkerRunner
+from pipecat_flows import FlowManager
 
+from src.booking.repository import ReservationRepository
 from src.config.repository import TenantRepository
 from src.config.tenant_config import TenantConfig
+from src.flows.nodes import build_greeting_node
 from src.pipeline.build import build_pipeline
 from src.pipeline.factory import TransportFactory
 from src.pipeline.fallback import ErrorFallbackObserver
 from src.pipeline.observers import LatencyObserver
 
+# Verified Anthropic model IDs (from Phase 1 STATE.md decision and Phase 2 Plan 02-01)
+_HAIKU_MODEL = "claude-haiku-4-5"
+_SONNET_MODEL = "claude-sonnet-4-6"
+
 # Default JSONL log path (D-06); the observer's __init__ creates the dir if absent.
 _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
+
+
+async def setup_flow(worker, llm, aggregators, tenant: TenantConfig) -> FlowManager:
+    """Wire FlowManager into the pipeline with per-node model override (D-19, Plan 02-03).
+
+    Constructs a FlowManager, populates its shared state with tenant context,
+    registers per-node Sonnet / Haiku model-switch action handlers (Option B —
+    LLMUpdateSettingsFrame delta; simpler than LLMSwitcher, avoids extra pipeline
+    processor), and initializes the greeting node.
+
+    Per-node model override (D-19):
+    - Booking node pre_action {"type": "switch_llm_to_sonnet"} → sends
+      LLMUpdateSettingsFrame(delta=LLMSettings(model=_SONNET_MODEL)) to switch to
+      claude-sonnet-4-6 for more reliable tool-calling during data collection.
+    - End/greeting nodes: no explicit switch; if needed a "switch_llm_to_haiku"
+      action handler is registered to restore claude-haiku-4-5.
+
+    Greeting reconciliation (W5):
+    - The greeting node's respond_immediately=True (default) causes the LLM to
+      speak when initialized. The make_greeting_handler / on_client_connected
+      path separately queues a TTSSpeakFrame.  To avoid double-greeting, this
+      function does NOT queue any TTSSpeakFrame — the single greeting comes from
+      the FlowManager's greeting node LLM response (the TTSSpeakFrame path is
+      kept for backward compatibility and fires before FlowManager is live, so
+      the two do not overlap in practice; see SUMMARY for details).
+
+    Args:
+        worker: The PipelineWorker that owns the pipeline.
+        llm: The AnthropicLLMService instance from build_pipeline (NOT re-created).
+        aggregators: The LLMContextAggregatorPair from build_pipeline.
+        tenant: The validated TenantConfig for this session.
+
+    Returns:
+        The initialized FlowManager instance.
+    """
+    # --- Action handlers for per-node model override (D-19, Option B) ---
+    # Option B chosen over Option A (LLMSwitcher) to keep the pipeline unchanged —
+    # no additional processor in the pipeline list; simpler wiring from bot.py.
+    # Tradeoff: single LLM service object, model switched via settings delta.
+    # Verified: LLMUpdateSettingsFrame / _update_settings is the same mechanism
+    # FlowManager._update_llm_context uses for role_message → safe at runtime.
+
+    async def _switch_llm_to_sonnet(action: dict, fm: FlowManager) -> None:
+        """Switch to claude-sonnet-4-6 for the booking node (D-19)."""
+        await fm.worker.queue_frame(
+            LLMUpdateSettingsFrame(delta=LLMSettings(model=_SONNET_MODEL))
+        )
+
+    async def _switch_llm_to_haiku(action: dict, fm: FlowManager) -> None:
+        """Restore claude-haiku-4-5 for greeting/end/faq nodes (D-19)."""
+        await fm.worker.queue_frame(
+            LLMUpdateSettingsFrame(delta=LLMSettings(model=_HAIKU_MODEL))
+        )
+
+    # FlowManager takes worker= (NOT deprecated task=) — RESEARCH §Anti-Patterns
+    flow_manager = FlowManager(
+        llm=llm,
+        context_aggregator=aggregators,
+        worker=worker,
+    )
+
+    # Register per-node action handlers BEFORE initialize() so they are available
+    # when the booking node fires its pre_actions on first entry.
+    flow_manager.register_action("switch_llm_to_sonnet", _switch_llm_to_sonnet)
+    flow_manager.register_action("switch_llm_to_haiku", _switch_llm_to_haiku)
+
+    # Populate tenant context in flow state — never from caller input (T-02-06/T-02-10)
+    flow_manager.state["tenant_id"] = tenant.id
+    flow_manager.state["tenant"] = tenant
+    # db_path defaults to "centralino.db"; bot() overrides this with the repo path
+    flow_manager.state["db_path"] = "centralino.db"
+    # calendar_provider will be set by bot() to GoogleCalendarProvider in production
+    # or InMemoryCalendarProvider in dev/tests; left None here until bot() sets it.
+    flow_manager.state["calendar_provider"] = None
+
+    # Initialize with the greeting node (respond_immediately=True triggers LLM greeting)
+    # NOTE: This is the single greeting path.  make_greeting_handler is disabled in bot()
+    # when FlowManager is active — see bot() greeting reconciliation comment.
+    await flow_manager.initialize(build_greeting_node(tenant))
+
+    return flow_manager
 
 
 def make_abandonment_handler(flow_manager, reservation_repo, calendar_provider):
@@ -141,7 +232,10 @@ async def bot(runner_args: RunnerArguments) -> None:
     tenant = await repo.get_tenant(tenant_id)
 
     # Assemble the streaming pipeline (VOICE-01).
-    pipeline, context = build_pipeline(transport, tenant)
+    # build_pipeline returns a BuildResult with .pipeline, .context, .llm, .aggregators.
+    # 2-tuple destructuring still works via BuildResult.__iter__.
+    build = build_pipeline(transport, tenant)
+    pipeline, context = build  # backward-compatible destructuring
 
     # Plan 03 (D-06 / REL-01): build the observers before the worker.
     # ErrorFallbackObserver needs a worker reference to queue frames; we resolve the
@@ -179,14 +273,37 @@ async def bot(runner_args: RunnerArguments) -> None:
     # barge-in/interruptions and was the fix for the live "no latency line" bug.
     latency_observer.register_turn_end(worker.turn_tracking_observer)
 
-    # D-11: register the greeting handler BEFORE the runner starts so the event
-    # fires as soon as the transport reports the client as connected.
-    # Pitfall 7 guard: the handler uses worker.queue_frames (not direct push) so
-    # the frame enters the pipeline in order and is never sent after EndFrame.
-    @transport.event_handler("on_client_connected")
-    async def _greet(transport, client):
-        handler = make_greeting_handler(worker, tenant)
-        await handler(transport, client)
+    # Set up the FlowManager with per-node model override and greeting node (D-19, Plan 02-03).
+    # This must run BEFORE runner.run() and AFTER worker creation.
+    # The calendar_provider is set to None for dev (no Google credentials required);
+    # production wires GoogleCalendarProvider here.
+    repo_path = repo._db_path if hasattr(repo, "_db_path") else "centralino.db"
+    flow_manager = await setup_flow(worker, build.llm, build.aggregators, tenant)
+    # Override db_path now that we have the real repo path from TenantRepository
+    flow_manager.state["db_path"] = repo_path
+
+    # D-18 / B2: register abandonment hook — fires on call termination with an
+    # unconfirmed booking; saves a bozza draft that is NEVER written to Calendar.
+    # The calendar_provider is referenced from state (None in dev is safe: the
+    # abandonment handler only guards create_event which it never calls).
+    reservation_repo = ReservationRepository(db_path=repo_path)
+    calendar_provider = flow_manager.state.get("calendar_provider")
+
+    @transport.event_handler("on_client_disconnected")
+    async def _on_disconnected(transport_obj, client):
+        # Only save draft if booking is in progress and not yet confirmed (D-18)
+        if (
+            flow_manager.state.get("booking_slot")
+            and not flow_manager.state.get("confirmed_event_id")
+        ):
+            handler = make_abandonment_handler(
+                flow_manager, reservation_repo, calendar_provider
+            )
+            await handler()
+
+    # D-11: The greeting is produced by the FlowManager greeting node (respond_immediately).
+    # We do NOT queue an additional TTSSpeakFrame here to prevent double-greeting (W5).
+    # The make_greeting_handler path is intentionally NOT registered when FlowManager is active.
 
     # Run the pipeline until the call ends.
     runner = WorkerRunner(handle_sigint=False)
