@@ -10,6 +10,8 @@ Covers:
   unchanged, returns next_node=None to stay in booking node (D-17)
 - Source assertion: end-node transition only reachable on truthy event_id branch (W3)
 - Accepted behavior: DB confirm failure after Calendar write → no false confirm + bozza row (W4)
+- SC2 alternatives (D-04/D-05): slot full → same-day alternatives returned; all-day-full → next-day proposal
+- No calendar event created on capacity decline (SC2/T-02-09)
 
 Wave 0 state: RED — src/flows/functions.py and src/flows/nodes.py do not exist yet.
 These tests will fail with ImportError until Plan 02-03 creates the modules.
@@ -314,3 +316,218 @@ async def test_db_confirm_failure_after_calendar_write(in_memory_calendar):
     )
     # confirm_reservation was called (but failed — that's the tested scenario)
     mock_repo.confirm_reservation.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# D-04 / D-05 / SC2: Slot-full alternatives proposal
+# ---------------------------------------------------------------------------
+
+
+async def test_alternatives_same_day(reservation_repo, in_memory_calendar):
+    """D-04 / SC2: when the requested slot is full, the handler returns 2-3 same-day
+    alternatives (free slot_times on the same day) and does NOT create a calendar event.
+
+    Setup:
+    - Slot 20:00 is filled to capacity (max_covers_per_slot = 4 in booking_rules).
+    - Slots 19:00 and 21:30 have partial bookings (below capacity) → returned as alternatives.
+
+    Asserts:
+    - result["available"] is False
+    - result["alternatives"] contains at least one slot_time (same day)
+    - next_node is None (stay in booking node — no false confirm)
+    - create_event is never called
+    """
+    from src.booking.repository import ReservationRepository
+
+    db_path = reservation_repo._db_path
+    # seed the tenant row so FK constraint is satisfied
+    from src.config.repository import TenantRepository
+    from src.db.seed_demo import build_demo_tenant
+    tenant = build_demo_tenant()
+    tenant_repo = TenantRepository(db_path=db_path)
+    await tenant_repo.upsert_tenant(tenant)
+
+    # Fill slot 20:00 to capacity (max_covers_per_slot=40 in demo booking_rules)
+    # Two bookings of 20 covers each = exactly 40 total → slot is at capacity
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        await db.executemany(
+            """INSERT INTO reservations (tenant_id, slot_date, slot_time, covers, name, phone, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'confermata')""",
+            [
+                ("demo", "2025-07-10", "20:00", 20, "Rossi", "3471111111"),
+                ("demo", "2025-07-10", "20:00", 20, "Bianchi", "3472222222"),
+                # Partially-filled alternatives on the same day (both < 40 covers)
+                ("demo", "2025-07-10", "19:00", 10, "Verdi", "3473333333"),
+                ("demo", "2025-07-10", "21:30", 5, "Neri", "3474444444"),
+            ],
+        )
+        await db.commit()
+
+    fm_state = {
+        "booking_slot": {"date": "2025-07-10", "time_slot": "20:00", "covers": 2},
+        "customer": {"name": "Ferrari", "phone": "3475555555"},
+        "tenant_id": "demo",
+        "tenant": tenant,
+        "db_path": db_path,
+        "calendar_provider": in_memory_calendar,
+    }
+    from types import SimpleNamespace
+    fm = SimpleNamespace(state=fm_state)
+    in_memory_calendar.create_event = AsyncMock()
+
+    result, next_node = await handle_confirm_booking({}, fm)
+
+    assert result.get("available") is False, (
+        f"SC2: slot-full must set available=False; got {result!r}"
+    )
+    alternatives = result.get("alternatives", [])
+    assert alternatives, (
+        f"D-04: at least one same-day alternative slot_time must be proposed; got {result!r}"
+    )
+    assert next_node is None, (
+        "SC2: decline must return next_node=None (stay in booking node)"
+    )
+    # create_event must NEVER be called on a capacity decline (T-02-09)
+    in_memory_calendar.create_event.assert_not_called()
+
+
+async def test_alternatives_next_day(reservation_repo, in_memory_calendar):
+    """D-05 / SC2: when the requested day has no free slots, the handler searches
+    subsequent days and returns the first available {date, slot_time}.
+
+    Setup:
+    - All slots on 2025-07-10 are filled to capacity.
+    - Slot 20:00 on 2025-07-11 is partially filled (below capacity) → proposed as next-day.
+
+    Asserts:
+    - result["available"] is False
+    - result["alternatives"] is empty (or absent) — no same-day alternative
+    - result["next_day"] contains a date and slot_time from 2025-07-11 (or later)
+    - next_node is None
+    - create_event is never called
+    """
+    from src.booking.repository import ReservationRepository
+
+    db_path = reservation_repo._db_path
+    from src.config.repository import TenantRepository
+    from src.db.seed_demo import build_demo_tenant
+    tenant = build_demo_tenant()
+    tenant_repo = TenantRepository(db_path=db_path)
+    await tenant_repo.upsert_tenant(tenant)
+
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        await db.executemany(
+            """INSERT INTO reservations (tenant_id, slot_date, slot_time, covers, name, phone, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'confermata')""",
+            [
+                # 2025-07-10 at capacity (max_covers_per_slot=40): 20+20 = 40
+                ("demo", "2025-07-10", "20:00", 20, "Rossi", "3471111111"),
+                ("demo", "2025-07-10", "20:00", 20, "Bianchi", "3472222222"),
+                # 2025-07-11 has a partially-filled slot → should be proposed next-day
+                ("demo", "2025-07-11", "20:00", 10, "Verdi", "3473333333"),
+            ],
+        )
+        await db.commit()
+
+    fm_state = {
+        "booking_slot": {"date": "2025-07-10", "time_slot": "20:00", "covers": 2},
+        "customer": {"name": "Ferrari", "phone": "3475555555"},
+        "tenant_id": "demo",
+        "tenant": tenant,
+        "db_path": db_path,
+        "calendar_provider": in_memory_calendar,
+    }
+    from types import SimpleNamespace
+    fm = SimpleNamespace(state=fm_state)
+    in_memory_calendar.create_event = AsyncMock()
+
+    result, next_node = await handle_confirm_booking({}, fm)
+
+    assert result.get("available") is False, (
+        f"SC2: slot-full must set available=False; got {result!r}"
+    )
+    # Same-day alternatives are empty (all full)
+    alternatives = result.get("alternatives", [])
+    assert not alternatives, (
+        f"D-05: no same-day alternatives should be found when all slots are full; "
+        f"got alternatives={alternatives!r}"
+    )
+    next_day = result.get("next_day")
+    assert next_day is not None, (
+        f"D-05: a next-day proposal must be present when same day is full; "
+        f"got result={result!r}"
+    )
+    # The next-day proposal must contain a date and slot_time
+    assert "date" in next_day and "slot_time" in next_day, (
+        f"D-05: next_day must contain 'date' and 'slot_time'; got next_day={next_day!r}"
+    )
+    assert next_node is None, (
+        "SC2: decline must return next_node=None (stay in booking node)"
+    )
+    in_memory_calendar.create_event.assert_not_called()
+
+
+async def test_no_event_on_decline(reservation_repo, in_memory_calendar):
+    """SC2 / T-02-09: on a capacity decline (slot full), no calendar event is created
+    and no 'confermata' row is written to the DB.
+
+    Asserts:
+    - create_event is never called
+    - no confermata reservation row exists in the DB
+    - next_node is None
+    """
+    db_path = reservation_repo._db_path
+    from src.config.repository import TenantRepository
+    from src.db.seed_demo import build_demo_tenant
+    tenant = build_demo_tenant()
+    tenant_repo = TenantRepository(db_path=db_path)
+    await tenant_repo.upsert_tenant(tenant)
+
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        # Fill 20:00 to capacity (max_covers_per_slot=40): 20+20 = 40
+        await db.executemany(
+            """INSERT INTO reservations (tenant_id, slot_date, slot_time, covers, name, phone, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'confermata')""",
+            [
+                ("demo", "2025-07-10", "20:00", 20, "Rossi", "3471111111"),
+                ("demo", "2025-07-10", "20:00", 20, "Bianchi", "3472222222"),
+            ],
+        )
+        await db.commit()
+
+    fm_state = {
+        "booking_slot": {"date": "2025-07-10", "time_slot": "20:00", "covers": 2},
+        "customer": {"name": "Ferrari", "phone": "3475555555"},
+        "tenant_id": "demo",
+        "tenant": tenant,
+        "db_path": db_path,
+        "calendar_provider": in_memory_calendar,
+    }
+    from types import SimpleNamespace
+    fm = SimpleNamespace(state=fm_state)
+    in_memory_calendar.create_event = AsyncMock()
+
+    result, next_node = await handle_confirm_booking({}, fm)
+
+    # No calendar event created on capacity decline
+    in_memory_calendar.create_event.assert_not_called()
+
+    # No new confermata row added (only the pre-seeded ones exist)
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """SELECT COUNT(*) FROM reservations
+               WHERE tenant_id = ? AND slot_date = ? AND slot_time = ?
+               AND status = 'confermata'""",
+            ("demo", "2025-07-10", "20:00"),
+        ) as cur:
+            row = await cur.fetchone()
+    assert row[0] == 2, (
+        f"SC2: no new confermata row should be written on decline; "
+        f"expected 2 (pre-seeded), got {row[0]}"
+    )
+    assert next_node is None, (
+        "SC2: decline must return next_node=None"
+    )

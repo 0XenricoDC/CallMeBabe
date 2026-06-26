@@ -18,11 +18,15 @@ Pattern analog: src/pipeline/fallback.py (async handler + try/except + no-secret
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 from pipecat_flows import FlowsFunctionSchema
 
 from src.booking.date_parser import slot_to_datetimes
 from src.booking.repository import ReservationRepository
+
+# D-05: how many days forward to search when the requested day has no free slots
+MAX_ALT_DAYS = 3
 
 # ---------------------------------------------------------------------------
 # FlowsFunctionSchema builders
@@ -205,13 +209,39 @@ async def handle_confirm_booking(args: dict, fm) -> tuple[dict, dict | None]:
         limit=max_covers,
     )
     if not ok:
-        # Slot full — find alternatives (D-04)
+        # Slot full — find same-day alternatives first (D-04)
         alternatives = await repo.find_available_slots(
             tenant_id=tenant_id,
             slot_date=slot_date,
             limit_per_slot=max_covers,
         )
-        return {"available": False, "alternatives": alternatives}, None
+        # If no same-day alternatives, search forward up to MAX_ALT_DAYS (D-05)
+        next_day_proposal: dict | None = None
+        if not alternatives:
+            try:
+                requested_date = date.fromisoformat(slot_date)
+            except ValueError:
+                requested_date = None
+            if requested_date is not None:
+                for delta in range(1, MAX_ALT_DAYS + 1):
+                    candidate_date = (requested_date + timedelta(days=delta)).isoformat()
+                    next_day_slots = await repo.find_available_slots(
+                        tenant_id=tenant_id,
+                        slot_date=candidate_date,
+                        limit_per_slot=max_covers,
+                        count=1,
+                    )
+                    if next_day_slots:
+                        next_day_proposal = {
+                            "date": candidate_date,
+                            "slot_time": next_day_slots[0],
+                        }
+                        break
+        return {
+            "available": False,
+            "alternatives": alternatives,
+            "next_day": next_day_proposal,
+        }, None
 
     # --- Step 3: Calendar write (projection — not the lock) ---
     try:

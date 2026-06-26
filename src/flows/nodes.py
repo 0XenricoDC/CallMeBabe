@@ -89,7 +89,14 @@ def build_booking_node(tenant: TenantConfig) -> dict:
                     "Se il cliente dice 'no' o vuole correggere un dato, chiedi quale campo "
                     "vuole cambiare e chiama correct_booking_field con il campo e il nuovo valore, "
                     "poi rileggi i dati aggiornati (D-17 — correggi solo il campo indicato, "
-                    "non ricominciare la raccolta da capo)."
+                    "non ricominciare la raccolta da capo). "
+                    "Se confirm_booking restituisce available=false con alternatives, "
+                    "proponi gli slot disponibili nella stessa giornata in modo naturale "
+                    "(es. 'Le 20:00 sono al completo, ho posto alle 19:00 o alle 21:30'). "
+                    "Se anche next_day è presente, proponi il primo slot disponibile "
+                    "nel giorno indicato (es. 'domani sera alle 20:00'). "
+                    "Non ripetere la raccolta dati da capo — chiedi solo se la nuova "
+                    "fascia oraria va bene."
                 ),
             }
         ],
