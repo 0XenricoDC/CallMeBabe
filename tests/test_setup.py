@@ -14,16 +14,20 @@ def _read(name: str) -> str:
 
 
 def test_env_example():
-    """SETUP-01 / D-12: only the 3 Phase 1 keys; no TELNYX_/GOOGLE_ keys."""
+    """SETUP-01: Phase 1 keys present; Phase 4 (Telnyx) keys absent.
+    Phase 2 (Google Calendar) keys ADDED in Phase 2 (02-01).
+    """
     content = _read(".env.example")
 
     assert "DEEPGRAM_API_KEY=" in content
     assert "ANTHROPIC_API_KEY=" in content
     assert "ELEVENLABS_API_KEY=" in content
 
-    # Phases 4 (Telnyx) and 2 (Google Calendar) keys must NOT leak into Phase 1.
+    # Phase 4 (Telnyx) keys must NOT be present yet.
     assert "TELNYX_" not in content
-    assert "GOOGLE_" not in content
+    # Phase 2 (Google Calendar) keys are expected from Plan 02-01 onward.
+    assert "GOOGLE_SERVICE_ACCOUNT_JSON" in content
+    assert "GOOGLE_CALENDAR_ID_DEMO" in content
 
 
 def test_env_example_has_no_real_secrets():

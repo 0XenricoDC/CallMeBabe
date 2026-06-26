@@ -20,6 +20,12 @@ dependencies = [
     "aiosqlite>=0.20",
     # Config / secrets
     "python-dotenv>=1.0",
+    # Phase 2: Google Calendar integration
+    "google-api-python-client>=2.190.0,<3",
+    "google-auth>=2.50.0,<3",
+    "google-auth-httplib2>=0.2.0",
+    # Phase 2: Italian date/time parsing
+    "dateparser>=1.4.0,<2",
 ]
 
 [project.optional-dependencies]
