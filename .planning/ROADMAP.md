@@ -63,7 +63,23 @@ Plans:
   4. A caller who asks about hours, address, services, or prices receives an answer grounded in that client's knowledge base; if the information is not in the KB, the bot says it will check rather than inventing an answer.
   5. Each client's FAQ answers are drawn exclusively from that client's own knowledge base — no cross-tenant content appears.
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Foundation: verify model IDs, add deps, migrate schema (calendar_id + reservations/kb_documents/kb_chunks), extend config/repo/seed, all Wave 0 test stubs + fixtures (BOOK-01..06, FAQ-01..03)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 02-02-PLAN.md — First vertical slice: end-to-end booking happy path — CalendarProvider (InMemory + Google), ReservationRepository (BEGIN IMMEDIATE), date parser, booking Flows nodes with tool-result-gated confirm (BOOK-01..06, SC1/SC3)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 02-03-PLAN.md — Second slice: slot-full alternatives (same-day + next-day) + FlowManager wired into the pipeline with per-node Sonnet override (BOOK-02/04/05, SC2, D-19)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 02-04-PLAN.md — FAQ slice: FTS5 KB + ingest + faq_lookup tool + FAQ node (hybrid config/FTS5 routing, honest not-found) + demo KB + live end-of-phase verification (FAQ-01..03, SC4/SC5)
 **UI hint**: yes
 
 ### Phase 3: Handoff + Summary + Notifications
@@ -122,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
-| 2. Booking + Calendar + FAQ | 0/TBD | Not started | - |
+| 2. Booking + Calendar + FAQ | 0/4 | Not started | - |
 | 3. Handoff + Summary + Notifications | 0/TBD | Not started | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
