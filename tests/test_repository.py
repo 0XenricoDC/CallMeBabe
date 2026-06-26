@@ -17,7 +17,7 @@ from src.config.repository import TenantRepository
 from src.config.seed_demo import seed_demo_tenant
 from src.config.tenant_config import TenantConfig
 
-# All 12 columns the schema must expose (D-02 — full nullable schema from day 1)
+# All 14 columns the schema must expose (D-02 + D-11 calendar_id added in Plan 02-01)
 EXPECTED_COLUMNS = {
     "id",
     "business_name",
@@ -32,6 +32,7 @@ EXPECTED_COLUMNS = {
     "transfer_number",
     "kb_ref",
     "notification_channel",
+    "calendar_id",
 }
 
 

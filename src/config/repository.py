@@ -58,8 +58,8 @@ class TenantRepository:
                 INSERT OR REPLACE INTO tenants (
                     id, business_name, greeting, voice_id, language, system_prompt,
                     model, hours, services, booking_rules, transfer_number,
-                    kb_ref, notification_channel
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    kb_ref, notification_channel, calendar_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     tenant.id,
@@ -75,6 +75,7 @@ class TenantRepository:
                     tenant.transfer_number,
                     tenant.kb_ref,
                     tenant.notification_channel,
+                    tenant.calendar_id,
                 ),
             )
             await db.commit()

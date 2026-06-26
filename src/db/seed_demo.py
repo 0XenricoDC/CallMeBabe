@@ -39,7 +39,13 @@ _DEFAULT_VOICE_ID = "ErXwobaYiN019PkySvjV"
 
 
 def build_demo_tenant() -> TenantConfig:
-    """Construct the demo TenantConfig (no DB access)."""
+    """Construct the demo TenantConfig (no DB access).
+
+    Phase 2 additions (D-01, D-03, D-06, D-11):
+    - hours, services, booking_rules for the restaurant scenario
+    - kb_ref path for the demo knowledge base
+    - calendar_id from env (nullable in dev without Google Calendar setup)
+    """
     voice_id = os.getenv("DEMO_VOICE_ID", _DEFAULT_VOICE_ID) or _DEFAULT_VOICE_ID
     return TenantConfig(
         id="demo",
@@ -48,7 +54,15 @@ def build_demo_tenant() -> TenantConfig:
         voice_id=voice_id,
         language="it",
         system_prompt=DEMO_SYSTEM_PROMPT.format(business_name=DEMO_BUSINESS_NAME),
-        model="claude-haiku-4-5",  # D-10
+        model="claude-haiku-4-5",  # D-10: Haiku for most turns (Sonnet override on booking path D-19)
+        # Phase 2 restaurant fields (D-01, D-03)
+        hours="12:00-15:00, 19:00-23:00",
+        services="Cucina italiana, pizzeria, vini naturali",
+        booking_rules='{"slot_duration_min": 30, "max_covers_per_slot": 40}',
+        # Phase 2 KB reference (D-06)
+        kb_ref="data/tenants/demo_trattoria/kb",
+        # Phase 2 Google Calendar id (D-11) — nullable when GOOGLE_CALENDAR_ID_DEMO not set
+        calendar_id=os.getenv("GOOGLE_CALENDAR_ID_DEMO"),
     )
 
 

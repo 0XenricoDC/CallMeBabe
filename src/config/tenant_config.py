@@ -33,6 +33,7 @@ class TenantConfig(BaseModel):
     transfer_number: Optional[str] = None
     kb_ref: Optional[str] = None
     notification_channel: Optional[str] = None
+    calendar_id: Optional[str] = None  # Google Calendar id for this tenant (D-11)
 
     @field_validator("voice_id")
     @classmethod
