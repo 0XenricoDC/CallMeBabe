@@ -39,6 +39,9 @@ class CallLogRepository:
         """
         schema_sql = _SCHEMA_PATH.read_text(encoding="utf-8")
         async with aiosqlite.connect(self._db_path) as db:
+            # WR-03: SQLite disables FK enforcement per-connection by default; enable
+            # it so call_logs.tenant_id / reservation_id REFERENCES are actually checked.
+            await db.execute("PRAGMA foreign_keys = ON")
             await db.executescript(schema_sql)
             await db.commit()
 
@@ -81,6 +84,9 @@ class CallLogRepository:
         serialized_transcript = json.dumps(transcript_json, ensure_ascii=False)
 
         async with aiosqlite.connect(self._db_path) as db:
+            # WR-03: enforce FK on this connection so the documented IntegrityError
+            # is actually raised when tenant_id / reservation_id do not exist.
+            await db.execute("PRAGMA foreign_keys = ON")
             cursor = await db.execute(
                 """
                 INSERT INTO call_logs
