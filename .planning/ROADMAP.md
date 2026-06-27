@@ -109,7 +109,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 03-03-PLAN.md — Notification channels (log/telegram/email/sms) + factory + end-of-call dispatch hook + .env.example (NOTIF-03/04/05, SC2)
+- [x] 03-03-PLAN.md — Notification channels (log/telegram/email/sms) + factory + end-of-call dispatch hook + .env.example (NOTIF-03/04/05, SC2)
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -156,6 +156,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
 | 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
-| 3. Handoff + Summary + Notifications | 2/4 | In Progress|  |
+| 3. Handoff + Summary + Notifications | 3/4 | In Progress|  |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
