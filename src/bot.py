@@ -63,6 +63,33 @@ _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
 _WATCHDOG_T2: float = 8.0  # seconds after re-prompt before escalation (D-14)
 
 
+def _sanitize_transcript(messages: list) -> list[dict]:
+    """Normalize raw context messages to JSON-serializable {role, content} dicts (WR-08).
+
+    The live LLMContext can hold tool-use/tool-result blocks or frame objects whose
+    `content` is not a plain string. Passing those straight to json.dumps in
+    CallLogRepository.write() raises and aborts the call-log write. This mirrors the
+    defensive filter generate_summary already applies: keep only turns whose content
+    is a string. Non-dict / non-string-content entries are dropped rather than
+    crashing the end-of-call hook.
+
+    Args:
+        messages: Raw message list from build.context.messages (or the cached snapshot).
+
+    Returns:
+        A list of plain {"role": str, "content": str} dicts safe for json.dumps.
+    """
+    safe: list[dict] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        content = m.get("content")
+        if role in ("user", "assistant", "system") and isinstance(content, str):
+            safe.append({"role": role, "content": content})
+    return safe
+
+
 class _DeadAirHandler:
     """Dead-air watchdog escalation handler for on_user_turn_idle events (REL-04/D-14).
 
@@ -509,7 +536,10 @@ async def bot(runner_args: RunnerArguments) -> None:
                 tenant_id=tenant.id,
                 started_at=call_start_time,
                 outcome=outcome,
-                transcript_json=transcript,
+                # WR-08: sanitize to plain {role, content} string dicts so a
+                # non-serializable tool-use/result block cannot make json.dumps raise
+                # and lose the call-log row.
+                transcript_json=_sanitize_transcript(transcript),
                 summary_text=summary_text,
                 reservation_id=flow_manager.state.get("reservation_id"),
                 google_event_id=flow_manager.state.get("confirmed_event_id"),
