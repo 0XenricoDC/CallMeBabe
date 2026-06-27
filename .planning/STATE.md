@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: 03-01 Task 3 human-verify checkpoint (live transfer test — SC1)
-last_updated: "2026-06-27T12:02:42.914Z"
+stopped_at: 03-03 Task 3 human-verify checkpoint (live end-of-call notification test — SC2)
+last_updated: "2026-06-27T14:12:00Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 5
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (handoff-summary-notifications) — EXECUTING
-Plan: 2 of 4 (code complete; SC1 live verification pending)
-Status: Ready to execute
+Plan: 3 of 4 (code complete; SC2 live verification pending)
+Status: Paused at SC2 human-verify checkpoint
 Last activity: 2026-06-27
 
 Progress: [████████░░] 82%
@@ -60,6 +60,7 @@ Progress: [████████░░] 82%
 | Phase 02-booking-calendar-faq P03 | 14 | 2 tasks | 6 files |
 | Phase 02-booking-calendar-faq P04 | 20 | 2 tasks | 8 files |
 | Phase 03 P02 | 6 | 3 tasks | 6 files |
+| Phase 03 P03 | ~10 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,10 @@ Recent decisions affecting current work:
 - [Phase 03]: [03-02]: generate_summary uses tenant.model exclusively — no hardcoded competing model id (CLAUDE.md constraint, RESEARCH A2 verify-at-build)
 - [Phase 03]: [03-02]: transcript_json stored with ensure_ascii=False so Italian chars survive JSON round-trip to notification body
 - [Phase 03]: [03-02]: _determine_outcome priority: explicit state['outcome'] wins; then confirmed_event_id→prenotato; faq_answered→faq; booking_slot-no-event→abbandonato; default faq
+- [Phase 03]: [03-03]: NotificationChannelFactory.create_channel reads creds via os.getenv only; unknown/None name falls back to LogNotificationChannel (D-11 default)
+- [Phase 03]: [03-03]: End-of-call try/finally in bot.py fires for EVERY call/outcome (D-07); order: _determine_outcome → generate_summary → CallLogRepository.write → channel.send
+- [Phase 03]: [03-03]: channel.send failure in finally is caught and logged by type only — call shutdown never blocked (T-03-FIN)
+- [Phase 03]: [03-03]: ROME_TZ uses fixed UTC+1 timedelta (no pytz/zoneinfo dep in Phase 3); Phase 4+ can upgrade to zoneinfo.ZoneInfo("Europe/Rome") for DST accuracy
 
 ### Pending Todos
 
@@ -117,6 +122,7 @@ None yet.
 ### Blockers/Concerns
 
 - [03-01] SC1 live verification PENDING (deferred by owner): 5 spoken transfer scenarios (explicit request, mid-booking, FAQ-not-found offer, non-Italian, config-number integrity) must be run manually via `python main.py --tenant=demo`. Code + automated tests complete (77 pass); behavioral guarantee unconfirmed. See 03-01-SUMMARY.md §Pending Human Verification.
+- [03-03] SC2 live verification PENDING (blocking checkpoint): end-of-call notification hook must be verified manually — run a booking + an abandoned call, confirm [CALL LOG] line in console and call_logs DB row. Automated tests complete (103 pass); live behavioral guarantee unconfirmed.
 - Phase 4 (Telnyx): HIGH research flag from SUMMARY.md — plan `/gsd:plan-phase 4` should use `--research-phase`.
 - Phase 2 (Booking/Calendar): MEDIUM research flag — Google Calendar freebusy inversion and transactional reserve schema have documented subtleties.
 
@@ -134,6 +140,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-27T12:02:42.898Z
-Stopped at: 03-01 Task 3 human-verify checkpoint (live transfer test — SC1)
+Last session: 2026-06-27T14:12:00Z
+Stopped at: 03-03 Task 3 human-verify checkpoint (live end-of-call notification test — SC2)
 Resume file: None
