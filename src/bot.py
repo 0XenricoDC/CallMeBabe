@@ -473,16 +473,31 @@ async def bot(runner_args: RunnerArguments) -> None:
         # 4. Persist call log row to call_logs table.
         # 5. Dispatch notification on tenant's configured channel.
         # A channel.send() failure is caught and logged by type only — never crashes shutdown.
+        from loguru import logger  # noqa: PLC0415 — loguru always available
+
+        # --- Step 1: build the summary inputs (PII-safe; generate_summary has its
+        # own fallback and never raises). Guard outcome/transcript capture so a
+        # surprise here still lets the owner notification fire (CR-01, D-07).
         try:
-            from loguru import logger  # noqa: PLC0415 — loguru always available
-
             outcome = _determine_outcome(flow_manager.state)
-
             # Prefer the live context messages; fall back to cached list if torn down (A4).
             transcript: list = list(build.context.messages) or _cached_messages
-
             summary_text = await generate_summary(tenant, transcript, outcome)
+        except Exception as prep_exc:  # noqa: BLE001
+            # T-03-LOGPII: log only exception type — never transcript/name/phone.
+            logger.error(
+                f"End-of-call summary prep failed for tenant {tenant.id!r}: "
+                f"{type(prep_exc).__name__}"
+            )
+            outcome = flow_manager.state.get("outcome") or "fallito"
+            transcript = []
+            summary_text = f"Riepilogo non disponibile (esito: {outcome})."
 
+        # --- Step 2: persist the call log. CR-01: a persistence failure here
+        # (e.g. SQLite `database is locked` under concurrent multi-tenant calls,
+        # or a json.dumps error) must NEVER suppress the owner notification, which
+        # is the product's core deliverable. So this runs in its own try block.
+        try:
             call_log_repo = CallLogRepository(db_path=repo_path)
             await call_log_repo.init_db()
             await call_log_repo.write(
@@ -500,27 +515,27 @@ async def bot(runner_args: RunnerArguments) -> None:
                 ),
                 channel_sent=tenant.notification_channel,
             )
+        except Exception as db_exc:  # noqa: BLE001
+            # T-03-LOGPII: log only exception type — never transcript/name/phone.
+            logger.error(
+                f"call_log write failed for tenant {tenant.id!r}: "
+                f"{type(db_exc).__name__}"
+            )
 
+        # --- Step 3: dispatch the owner notification. CR-01: runs regardless of
+        # the DB outcome above, so a transient persistence error never costs the
+        # owner their end-of-call summary.
+        try:
             channel = create_channel(tenant.notification_channel, tenant)
             subject = (
                 f"Chiamata {datetime.now(_ROME_TZ):%d/%m %H:%M}"
                 f" — {outcome.capitalize()}"
             )
-            try:
-                await channel.send(subject, summary_text)
-            except Exception as ch_exc:  # noqa: BLE001
-                # T-03-FIN: channel failure must NEVER block call shutdown.
-                # T-03-LOGPII: log only exception type — never subject or body.
-                logger.error(
-                    f"Notification dispatch failed for tenant {tenant.id!r}: "
-                    f"{type(ch_exc).__name__}"
-                )
-
-        except Exception as hook_exc:  # noqa: BLE001
-            # Outer guard: if the hook itself raises (e.g. DB unavailable),
-            # log type only and let the call shut down cleanly (T-03-FIN, D-07).
-            from loguru import logger as _log  # noqa: PLC0415
-            _log.error(
-                f"End-of-call hook failed for tenant {tenant.id!r}: "
-                f"{type(hook_exc).__name__}"
+            await channel.send(subject, summary_text)
+        except Exception as ch_exc:  # noqa: BLE001
+            # T-03-FIN: channel failure must NEVER block call shutdown.
+            # T-03-LOGPII: log only exception type — never subject or body.
+            logger.error(
+                f"Notification dispatch failed for tenant {tenant.id!r}: "
+                f"{type(ch_exc).__name__}"
             )
