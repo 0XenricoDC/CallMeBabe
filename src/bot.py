@@ -457,10 +457,13 @@ async def bot(runner_args: RunnerArguments) -> None:
     # runner raises (D-07: end-of-call hook must fire for EVERY call and EVERY outcome).
     call_start_time = datetime.now(_ROME_TZ).isoformat()
 
-    # Cache the message list before runner.run() as a fallback.  After runner.run() the
-    # LLMContext may have been torn down; build.context.messages might be empty.
-    # We update this cache inside the finally block using the live context if available (A4).
-    _cached_messages: list = []
+    # WR-04: snapshot the message list before runner.run() as a real fallback.
+    # After runner.run() the LLMContext may have been torn down and
+    # build.context.messages can be empty; in the finally block we prefer the live
+    # context but fall back to THIS snapshot (greeting + any pre-run turns) so the
+    # transcript/summary are not silently emptied (A4). Taken now while the context
+    # is known-good — there is no later refresh, hence the snapshot here.
+    _cached_messages: list = list(build.context.messages)
 
     # Run the pipeline until the call ends.
     runner = WorkerRunner(handle_sigint=False)
