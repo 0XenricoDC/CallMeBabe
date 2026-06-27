@@ -19,6 +19,7 @@ validated CLI arg and is passed to the parameterized repository query (Plan 01-0
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 
 from pipecat.frames.frames import LLMUpdateSettingsFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -30,10 +31,13 @@ from pipecat_flows import FlowManager
 from src.booking.repository import ReservationRepository
 from src.calendar.google_provider import GoogleCalendarProvider
 from src.calendar.memory_provider import InMemoryCalendarProvider
+from src.call_log.repository import CallLogRepository
+from src.call_log.summary import _determine_outcome, generate_summary
 from src.config.repository import TenantRepository
 from src.config.tenant_config import TenantConfig
 from src.flows.functions import build_transfer_schema
 from src.flows.nodes import build_greeting_node
+from src.notifications.factory import create_channel
 from src.pipeline.build import build_pipeline
 from src.pipeline.factory import TransportFactory
 from src.pipeline.fallback import ErrorFallbackObserver
@@ -42,6 +46,11 @@ from src.pipeline.observers import LatencyObserver
 # Verified Anthropic model IDs (from Phase 1 STATE.md decision and Phase 2 Plan 02-01)
 _HAIKU_MODEL = "claude-haiku-4-5"
 _SONNET_MODEL = "claude-sonnet-4-6"
+
+# Europe/Rome timezone offset (UTC+1 standard, UTC+2 DST).
+# Fixed UTC+1 offset avoids pytz/zoneinfo dependency in Phase 3;
+# Phase 4+ can replace with zoneinfo.ZoneInfo("Europe/Rome") for DST accuracy.
+_ROME_TZ = timezone(offset=timedelta(hours=1))
 
 # Default JSONL log path (D-06); the observer's __init__ creates the dir if absent.
 _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
@@ -328,7 +337,76 @@ async def bot(runner_args: RunnerArguments) -> None:
     # We do NOT queue an additional TTSSpeakFrame here to prevent double-greeting (W5).
     # The make_greeting_handler path is intentionally NOT registered when FlowManager is active.
 
+    # Capture call start time before runner.run() so the timestamp is reliable even if the
+    # runner raises (D-07: end-of-call hook must fire for EVERY call and EVERY outcome).
+    call_start_time = datetime.now(_ROME_TZ).isoformat()
+
+    # Cache the message list before runner.run() as a fallback.  After runner.run() the
+    # LLMContext may have been torn down; build.context.messages might be empty.
+    # We update this cache inside the finally block using the live context if available (A4).
+    _cached_messages: list = []
+
     # Run the pipeline until the call ends.
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
-    await runner.run()
+    try:
+        await runner.run()
+    finally:
+        # NOTIF-03 / D-07: end-of-call hook — runs for EVERY call and EVERY outcome.
+        # 1. Determine outcome from flow state.
+        # 2. Capture transcript from LLMContext (or fall back to cached list).
+        # 3. Generate 2-3 sentence Italian summary via Anthropic (PII-safe).
+        # 4. Persist call log row to call_logs table.
+        # 5. Dispatch notification on tenant's configured channel.
+        # A channel.send() failure is caught and logged by type only — never crashes shutdown.
+        try:
+            from loguru import logger  # noqa: PLC0415 — loguru always available
+
+            outcome = _determine_outcome(flow_manager.state)
+
+            # Prefer the live context messages; fall back to cached list if torn down (A4).
+            transcript: list = list(build.context.messages) or _cached_messages
+
+            summary_text = await generate_summary(tenant, transcript, outcome)
+
+            call_log_repo = CallLogRepository(db_path=repo_path)
+            await call_log_repo.init_db()
+            await call_log_repo.write(
+                tenant_id=tenant.id,
+                started_at=call_start_time,
+                outcome=outcome,
+                transcript_json=transcript,
+                summary_text=summary_text,
+                reservation_id=flow_manager.state.get("reservation_id"),
+                google_event_id=flow_manager.state.get("confirmed_event_id"),
+                transfer_number=(
+                    flow_manager.state.get("transfer_payload", {}).get("transfer_number")
+                    if isinstance(flow_manager.state.get("transfer_payload"), dict)
+                    else None
+                ),
+                channel_sent=tenant.notification_channel,
+            )
+
+            channel = create_channel(tenant.notification_channel, tenant)
+            subject = (
+                f"Chiamata {datetime.now(_ROME_TZ):%d/%m %H:%M}"
+                f" — {outcome.capitalize()}"
+            )
+            try:
+                await channel.send(subject, summary_text)
+            except Exception as ch_exc:  # noqa: BLE001
+                # T-03-FIN: channel failure must NEVER block call shutdown.
+                # T-03-LOGPII: log only exception type — never subject or body.
+                logger.error(
+                    f"Notification dispatch failed for tenant {tenant.id!r}: "
+                    f"{type(ch_exc).__name__}"
+                )
+
+        except Exception as hook_exc:  # noqa: BLE001
+            # Outer guard: if the hook itself raises (e.g. DB unavailable),
+            # log type only and let the call shut down cleanly (T-03-FIN, D-07).
+            from loguru import logger as _log  # noqa: PLC0415
+            _log.error(
+                f"End-of-call hook failed for tenant {tenant.id!r}: "
+                f"{type(hook_exc).__name__}"
+            )
