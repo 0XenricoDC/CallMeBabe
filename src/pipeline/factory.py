@@ -135,17 +135,32 @@ def build_vad_params() -> VADParams:
     )
 
 
+# REL-04 / D-14: dead-air watchdog timers (Claude's Discretion starting points).
+# T1: first idle timeout — fires on_user_turn_idle → re-prompt "È ancora in linea?".
+# T2: extended timeout set after re-prompt — fires again if user still silent → transfer.
+# After re-prompt the watchdog handler raises the live timeout to T2 via
+# UserIdleTimeoutUpdateFrame (see bot.py _DeadAirHandler.on_idle).
+_WATCHDOG_T1: float = 6.0  # seconds of silence before first re-prompt
+_WATCHDOG_T2: float = 8.0  # additional seconds (set after re-prompt) before escalation
+
+
 def build_user_aggregator_params() -> LLMUserAggregatorParams:
-    """Return LLMUserAggregatorParams with the CRITICAL timeout fix (VOICE-04).
+    """Return LLMUserAggregatorParams with the CRITICAL timeout fix (VOICE-04/REL-04).
 
     user_turn_stop_timeout=0.2: after VAD detects silence, the aggregator waits
     only 0.2s before submitting the transcript to the LLM. Default is 5.0s —
     that alone blows the 800ms latency budget (Pitfall 1).
+
+    user_idle_timeout=T1: dead-air watchdog (REL-04/D-14). When the user has been
+    silent for T1 seconds after the bot stops speaking, on_user_turn_idle fires.
+    The _DeadAirHandler in bot.py escalates: re-prompt → (T2 window) → transfer.
+    Default is 0 (disabled); setting to 6.0s enables the watchdog (SC5).
     """
     vad = SileroVADAnalyzer(params=build_vad_params())
     return LLMUserAggregatorParams(
         vad_analyzer=vad,
-        user_turn_stop_timeout=0.2,  # CRITICAL: default 5s blows 800ms budget
+        user_turn_stop_timeout=0.2,   # CRITICAL: default 5s blows 800ms budget
+        user_idle_timeout=_WATCHDOG_T1,  # REL-04: dead-air watchdog (D-14)
     )
 
 

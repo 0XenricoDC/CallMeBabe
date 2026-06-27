@@ -55,6 +55,94 @@ _ROME_TZ = timezone(offset=timedelta(hours=1))
 # Default JSONL log path (D-06); the observer's __init__ creates the dir if absent.
 _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
 
+# REL-04 / D-14: dead-air watchdog constants (mirrors factory.py _WATCHDOG_T1/T2).
+# T1 is set on the aggregator params (build_user_aggregator_params in factory.py).
+# T2 is applied dynamically after the re-prompt via UserIdleTimeoutUpdateFrame.
+_WATCHDOG_T2: float = 8.0  # seconds after re-prompt before escalation (D-14)
+
+
+class _DeadAirHandler:
+    """Dead-air watchdog escalation handler for on_user_turn_idle events (REL-04/D-14).
+
+    Escalation ladder (SC5):
+      - Count 1 (T1 expired): push gentle re-prompt LLMMessagesAppendFrame + raise
+        the idle timeout to T2 via UserIdleTimeoutUpdateFrame (so T2 ≠ T1).
+      - Count 2 (T2 expired): set outcome='fallito', push courtesy TTSSpeakFrame +
+        EndWorkerFrame UPSTREAM to terminate the call cleanly.
+
+    Call ``reset()`` on on_user_turn_started to restart the escalation ladder when
+    the user speaks again.
+
+    Security:
+      - All courtesy/escalation phrases are static — no PII from caller input.
+      - Transfer uses flow_manager.state['outcome'] pattern (same as ErrorFallbackObserver).
+    """
+
+    def __init__(self, flow_manager, worker) -> None:
+        """Create the handler.
+
+        Args:
+            flow_manager: Active FlowManager whose .state['outcome'] is set on escalation.
+            worker:       PipelineWorker used to queue UserIdleTimeoutUpdateFrame (T2 raise).
+        """
+        self._flow_manager = flow_manager
+        self._worker = worker
+        self._count: int = 0
+
+    def reset(self) -> None:
+        """Reset the idle counter — call from on_user_turn_started (user spoke again)."""
+        self._count = 0
+
+    async def on_idle(self, aggregator) -> None:
+        """Handle an on_user_turn_idle event from the LLMUserAggregator.
+
+        Args:
+            aggregator: The LLMUserAggregator that fired the event; frames pushed
+                        here flow downstream in the pipeline.
+        """
+        from pipecat.frames.frames import (
+            EndWorkerFrame,
+            LLMMessagesAppendFrame,
+            TTSSpeakFrame,
+            UserIdleTimeoutUpdateFrame,
+        )
+        from pipecat.processors.frame_processor import FrameDirection
+
+        self._count += 1
+        if self._count == 1:
+            # T1 expired — gentle re-prompt (D-14, SC5).
+            # Push an LLMMessagesAppendFrame that instructs the LLM to check naturally
+            # whether the caller is still there, with run_llm=True so the LLM responds.
+            await aggregator.push_frame(
+                LLMMessagesAppendFrame(
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            "Sei ancora in linea? Non ho sentito risposta. "
+                            "Chiedi gentilmente 'È ancora in linea?'"
+                        ),
+                    }],
+                    run_llm=True,
+                )
+            )
+            # Raise the idle timeout to T2 so the second trigger is a separate window.
+            # Without this, the second idle fires T1 seconds after re-prompt (same T1).
+            # With UserIdleTimeoutUpdateFrame(T2), it fires T2 seconds after re-prompt.
+            await self._worker.queue_frame(
+                UserIdleTimeoutUpdateFrame(timeout=_WATCHDOG_T2)
+            )
+        else:
+            # T2 expired — escalation: set outcome and terminate (D-14, SC5).
+            # V7/T-03-LOG: phrase is static; flow state updated before EndWorkerFrame.
+            self._flow_manager.state["outcome"] = "fallito"
+            await aggregator.push_frame(
+                TTSSpeakFrame(
+                    text="Non riesco a sentirla, la passo a un operatore.",
+                    append_to_context=False,
+                )
+            )
+            await aggregator.push_frame(EndWorkerFrame(), FrameDirection.UPSTREAM)
+
 
 async def setup_flow(worker, llm, aggregators, tenant: TenantConfig) -> FlowManager:
     """Wire FlowManager into the pipeline with per-node model override (D-19, Plan 02-03).
@@ -342,6 +430,22 @@ async def bot(runner_args: RunnerArguments) -> None:
                 flow_manager, reservation_repo, calendar_provider
             )
             await handler()
+
+    # REL-04 (Phase 03-04): dead-air watchdog — re-prompt at T1, transfer at T2 (D-14/SC5).
+    # The _DeadAirHandler is wired AFTER setup_flow so flow_manager is in scope.
+    # Event handlers on build.aggregators.user() fire when the user aggregator detects
+    # prolonged silence (user_idle_timeout=T1 set in build_user_aggregator_params).
+    dead_air_handler = _DeadAirHandler(flow_manager=flow_manager, worker=worker)
+
+    @build.aggregators.user().event_handler("on_user_turn_idle")
+    async def _on_user_turn_idle(aggregator) -> None:
+        """T1 expired: re-prompt; T2 expired: set outcome='fallito' + transfer."""
+        await dead_air_handler.on_idle(aggregator)
+
+    @build.aggregators.user().event_handler("on_user_turn_started")
+    async def _on_user_turn_started(aggregator, strategy) -> None:
+        """User spoke — reset watchdog counter so next silence starts fresh at T1."""
+        dead_air_handler.reset()
 
     # D-11: The greeting is produced by the FlowManager greeting node (respond_immediately).
     # We do NOT queue an additional TTSSpeakFrame here to prevent double-greeting (W5).
