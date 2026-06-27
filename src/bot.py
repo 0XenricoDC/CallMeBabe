@@ -19,7 +19,8 @@ validated CLI arg and is passed to the parameterized repository query (Plan 01-0
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pipecat.frames.frames import LLMUpdateSettingsFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -47,10 +48,11 @@ from src.pipeline.observers import LatencyObserver
 _HAIKU_MODEL = "claude-haiku-4-5"
 _SONNET_MODEL = "claude-sonnet-4-6"
 
-# Europe/Rome timezone offset (UTC+1 standard, UTC+2 DST).
-# Fixed UTC+1 offset avoids pytz/zoneinfo dependency in Phase 3;
-# Phase 4+ can replace with zoneinfo.ZoneInfo("Europe/Rome") for DST accuracy.
-_ROME_TZ = timezone(offset=timedelta(hours=1))
+# Europe/Rome timezone — DST-aware (UTC+1 standard, UTC+2 during DST).
+# WR-02: a fixed UTC+1 offset is wrong for ~7 months/year (DST), making
+# call_logs.started_at and the notification subject off by one hour. Use the
+# IANA zone like src/flows/nodes.py does so both compute the same "current" hour.
+_ROME_TZ = ZoneInfo("Europe/Rome")
 
 # Default JSONL log path (D-06); the observer's __init__ creates the dir if absent.
 _LATENCY_LOG_PATH = os.path.join("logs", "latency.jsonl")
