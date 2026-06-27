@@ -278,8 +278,12 @@ async def bot(runner_args: RunnerArguments) -> None:
         ),
     )
 
-    # Resolve the circular reference now that `worker` exists.
+    # Resolve circular references now that `worker` exists.
+    # ErrorFallbackObserver needs the worker to queue frames (REL-01).
+    # WorkerRefHolder in the stt_switcher needs the worker to queue the STT-switch
+    # courtesy phrase (REL-03 / SC3).
     error_observer.worker = worker
+    build.worker_ref_holder.worker = worker
 
     # D-06 turn-end wiring: the LatencyObserver emits its per-turn line + JSONL when
     # the pipeline's built-in TurnTrackingObserver fires `on_turn_ended`. That observer
@@ -297,6 +301,12 @@ async def bot(runner_args: RunnerArguments) -> None:
     flow_manager = await setup_flow(worker, build.llm, build.aggregators, tenant)
     # Override db_path now that we have the real repo path from TenantRepository
     flow_manager.state["db_path"] = repo_path
+
+    # REL-02 (Phase 03-04): patch ErrorFallbackObserver with FlowManager reference.
+    # The observer needs flow_manager to set outcome='fallito' on persistent failure
+    # escalation (D-13/SC4). Must be set after FlowManager is created (circular-dep
+    # pattern mirrors error_observer.worker patch above).
+    error_observer.flow_manager = flow_manager
 
     # Wire the real CalendarProvider now that the tenant is loaded. setup_flow()
     # leaves state["calendar_provider"] = None; without this the booking handler

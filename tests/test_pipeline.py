@@ -32,11 +32,24 @@ def _make_mock_transport():
 # ---------------------------------------------------------------------------
 
 def test_pipeline_builds(tenant: TenantConfig):
-    """VOICE-01: build_pipeline(transport, tenant) returns a Pipeline + LLMContext."""
+    """VOICE-01: build_pipeline(transport, tenant) returns a Pipeline + LLMContext.
+
+    Phase 03-04 update: STT slot is now a ServiceSwitcher built by build_stt_switcher().
+    Patch build_stt_switcher at its import site in build.py to avoid real service init.
+    """
     # Patch external services at the point of import (factory.py and build.py)
     # so no network I/O or missing-API-key errors occur.
+    # Phase 03-04: build_stt_switcher() replaces the standalone DeepgramSTTService in
+    # build.py; patch it at source so no real Deepgram/Whisper init occurs.
+    mock_stt_switcher = MagicMock(name="SttSwitcherInstance")
+    mock_worker_ref_holder = MagicMock(name="WorkerRefHolder")
+
+    def _fake_build_stt_switcher(holder):
+        return mock_stt_switcher
+
     with (
-        patch("src.pipeline.factory.DeepgramSTTService") as MockSTT,
+        patch("src.pipeline.build.build_stt_switcher", side_effect=_fake_build_stt_switcher),
+        patch("src.pipeline.build.WorkerRefHolder", return_value=mock_worker_ref_holder),
         patch("src.pipeline.build.AnthropicLLMService") as MockLLM,
         patch("src.pipeline.factory.ElevenLabsTTSService") as MockTTS,
         patch("src.pipeline.factory.SileroVADAnalyzer") as MockVAD,
@@ -44,7 +57,6 @@ def test_pipeline_builds(tenant: TenantConfig):
         patch("src.pipeline.build.LLMContextAggregatorPair") as MockAggregators,
         patch("src.pipeline.build.LLMContext") as MockContext,
     ):
-        MockSTT.return_value = MagicMock(name="STTInstance")
         MockLLM.return_value = MagicMock(name="LLMInstance")
         MockTTS.return_value = MagicMock(name="TTSInstance")
         MockVAD.return_value = MagicMock(name="VADInstance")
