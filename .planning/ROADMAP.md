@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Local Voice Loop** - Italian conversational agent working locally on mic/headset with streaming pipeline, barge-in, personalized greeting, and latency instrumentation (completed 2026-06-24)
 - [x] **Phase 2: Booking + Calendar + FAQ** - Structured Pipecat Flows booking with real Google Calendar write, capacity check, spoken read-back/confirm gating, and per-tenant RAG FAQ
  (completed 2026-06-26)
-- [ ] **Phase 3: Handoff + Summary + Notifications** - Operator transfer from any point, end-of-call log and summary, multi-channel owner notification, full provider-failure fallback chain with dead-air watchdog (code complete 2026-06-27; verification gaps_found — see 03-VERIFICATION.md)
+- [ ] **Phase 3: Handoff + Summary + Notifications** - Operator transfer from any point, end-of-call log and summary, multi-channel owner notification, full provider-failure fallback chain with dead-air watchdog (code complete 2026-06-27; verification gaps_found — see 03-VERIFICATION.md)
 - [ ] **Phase 4: Telnyx Telephony** - Real inbound Italian calls via Telnyx, DID-to-tenant routing, all M1-M3 behaviors verified on the 8kHz phone path
 - [ ] **Phase 5: Multi-Tenant + Onboarding** - Full per-client config isolation, tenant_id-scoped persistence, onboarding CLI, and per-client credential store
 
@@ -97,7 +97,7 @@ Plans:
   4. Forcing a persistent STT or TTS failure (no recovery after retry) causes the bot to speak a courtesy phrase and transfer to the operator, with no dead-air period longer than a few seconds.
   5. A dead-air watchdog detects prolonged silence (no STT input and no TTS output) and triggers the recovery/transfer sequence automatically.
 
-**Plans**: 4 plans
+**Plans**: 6 plans (4 original + 2 gap-closure)
 Plans:
 **Wave 1**
 
@@ -114,6 +114,11 @@ Plans:
 **Wave 4** *(blocked on Wave 3)*
 
 - [x] 03-04-PLAN.md — Graceful-degradation ladder: STT failover (lazy faster-whisper) + persistent-failure transfer + dead-air watchdog (REL-02/03/04, SC3/4/5)
+
+**Gap Closure** *(from live UAT — run via `/gsd:execute-phase 3 --gaps-only`)*
+
+- [ ] 03-05-PLAN.md — GAP SC2: D-11 demo-default multi-send (log + telegram if token present) — MultiNotificationChannel + factory selection (NOTIF-03/04/05)
+- [ ] 03-06-PLAN.md — GAP SC3/SC4: real-error-path STT failover + escalation — FailoverDeepgramSTTService connection monitor surfaces 401/connection-down as ErrorFrame; whisper error-yield; switch-driven escalation to outcome 'fallito' (REL-02/03)
 
 ### Phase 4: Telnyx Telephony
 
@@ -156,6 +161,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
 | 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
-| 3. Handoff + Summary + Notifications | 4/4 | Gaps Found | - |
+| 3. Handoff + Summary + Notifications | 4/6 | Gap Closure Planned | - |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
