@@ -360,6 +360,9 @@ async def handle_confirm_booking(args: dict, fm) -> tuple[dict, dict | None]:
     # --- Step 5: Store event_id and transition to end node ---
     # build_end_node() transition is ONLY reachable here — on the branch where event_id is truthy
     fm.state["confirmed_event_id"] = event_id
+    # WR-01: persist the reservation FK so the call_logs row links to reservations.id
+    # (bot.py reads flow_manager.state["reservation_id"] for the 'prenotato' outcome).
+    fm.state["reservation_id"] = res_id
     return {"event_id": event_id, "status": "confirmed"}, build_end_node(tenant)
 
 
