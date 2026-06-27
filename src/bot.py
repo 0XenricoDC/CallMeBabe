@@ -32,6 +32,7 @@ from src.calendar.google_provider import GoogleCalendarProvider
 from src.calendar.memory_provider import InMemoryCalendarProvider
 from src.config.repository import TenantRepository
 from src.config.tenant_config import TenantConfig
+from src.flows.functions import build_transfer_schema
 from src.flows.nodes import build_greeting_node
 from src.pipeline.build import build_pipeline
 from src.pipeline.factory import TransportFactory
@@ -99,10 +100,14 @@ async def setup_flow(worker, llm, aggregators, tenant: TenantConfig) -> FlowMana
         )
 
     # FlowManager takes worker= (NOT deprecated task=) — RESEARCH §Anti-Patterns
+    # Phase 3 (03-01): global_functions=[build_transfer_schema()] makes transfer_call
+    # available from ANY node (greeting/booking/faq) without adding it to each node
+    # individually (HAND-04 — transfer from any flow point).
     flow_manager = FlowManager(
         llm=llm,
         context_aggregator=aggregators,
         worker=worker,
+        global_functions=[build_transfer_schema()],
     )
 
     # Register per-node action handlers BEFORE initialize() so they are available

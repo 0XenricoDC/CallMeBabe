@@ -162,7 +162,10 @@ def build_faq_node(tenant: TenantConfig | None = None) -> dict:
             "Se lo strumento restituisce found=false, ammetti onestamente di non avere "
             "quella informazione e offri di prendere nota: "
             "'Non ho questa informazione al momento, posso prendere nota e farla ricontattare.' "
-            "Non inventare mai dati (D-08)."
+            "Non inventare mai dati (D-08). "
+            "Oppure, se il cliente preferisce parlare direttamente con qualcuno, "
+            "puoi proporgli di passare a un operatore: "
+            "usa lo strumento transfer_call con reason='fuori_ambito'."
         ),
         "task_messages": [
             {

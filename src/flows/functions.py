@@ -7,6 +7,10 @@ Also implements the hybrid FAQ flow (D-06):
   faq_lookup → structured config fields (hours/services) OR FTS5 KB search
   When nothing matches: found=False fallback (D-08, FAQ-02)
 
+Phase 3 additions (03-01):
+- build_transfer_schema() / handle_transfer_call(): global transfer function (HAND-01..04)
+- handle_faq_lookup not-found branch now sets faq_transfer_offered=True (D-03)
+
 BOOK-05 gating: the end node transition happens ONLY when create_event returns a
 real event_id.  On any failure (capacity, calendar, DB) the handler returns
 (result, None) to stay in the booking node.
@@ -16,6 +20,9 @@ Security:
 - T-02-06: tenant_id comes from fm.state session context, not from tool args.
 - T-01-SQLI: all DB access goes through ReservationRepository (parameterized SQL).
 - T-02-13: KB queries always use tenant_id from session context (never caller input).
+- T-03-INJ: transfer_number resolved ONLY from fm.state["tenant"].transfer_number —
+  NEVER from caller-supplied args (T-injection prevention, PITFALLS §Security).
+- T-03-LOG: only reason/number logged in transfer; no caller PII.
 
 Pattern analog: src/pipeline/fallback.py (async handler + try/except + no-secrets-in-logs).
 """
@@ -26,6 +33,8 @@ import json
 from datetime import date, timedelta
 
 from loguru import logger
+from pipecat.frames.frames import EndWorkerFrame, TTSSpeakFrame
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat_flows import FlowsFunctionSchema
 
 from src.booking.date_parser import normalize_future_date, slot_to_datetimes
@@ -477,9 +486,128 @@ async def handle_faq_lookup(args: dict, fm) -> tuple[dict, None]:
         return {"found": True, "chunks": chunks}, None
 
     # --- Step 3: No match — honest fallback (D-08, FAQ-02) ---
-    # Return found=False; the FAQ node's role_message instructs the LLM to speak the
-    # D-08 phrase: 'Non ho questa informazione al momento, posso prendere nota...'
-    return {"found": False}, None
+    # Phase 3 (D-03): signal that the FAQ was not found so the FAQ node can offer
+    # to transfer to an operator if the caller prefers (faq_transfer_offered flag).
+    fm.state["faq_transfer_offered"] = True
+    return {"found": False, "offer_transfer": True}, None
+
+
+# ---------------------------------------------------------------------------
+# Transfer handlers and schema builders (HAND-01..04, Phase 3 / 03-01)
+# ---------------------------------------------------------------------------
+
+
+def build_transfer_schema() -> FlowsFunctionSchema:
+    """Return the FlowsFunctionSchema for transfer_call (HAND-04).
+
+    This schema is passed to ``FlowManager(global_functions=[...])`` so it is
+    automatically prepended to EVERY node's function list, making transfer
+    invocable from greeting, booking, and FAQ nodes without adding it to each
+    node individually (HAND-04 — transfer from any flow point).
+
+    Triggers (per system instructions):
+    - Caller explicitly requests a human (HAND-01)
+    - Caller speaks a non-Italian language (HAND-03)
+    - Request is out of scope or the bot is uncertain (HAND-02)
+    - FAQ not found and caller prefers an operator (D-03)
+
+    Security (T-03-INJ): ``reason`` is a safe, descriptive string (never used
+    for routing).  The actual transfer target comes ONLY from tenant config.
+    """
+    return FlowsFunctionSchema(
+        name="transfer_call",
+        description=(
+            "Trasferisci la chiamata a un operatore umano. "
+            "Usa quando il cliente lo richiede esplicitamente, "
+            "quando parla una lingua diversa dall'italiano, "
+            "quando la richiesta è fuori dal tuo ambito, "
+            "o quando non riesci ad aiutare il cliente."
+        ),
+        properties={
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Motivo del trasferimento (es. 'richiesta_cliente', "
+                    "'lingua_non_supportata', 'fuori_ambito', 'incertezza')."
+                ),
+            },
+        },
+        required=["reason"],
+        handler=handle_transfer_call,
+    )
+
+
+async def handle_transfer_call(args: dict, fm) -> tuple[dict, None]:
+    """Global transfer handler — local stub path (D-01, D-04, HAND-01..04).
+
+    Resolves the transfer target EXCLUSIVELY from trusted tenant config
+    (``fm.state["tenant"].transfer_number``) — NEVER from ``args``
+    (T-injection prevention, T-03-INJ, PITFALLS §Security).
+
+    Steps:
+    1. Resolve transfer_number from trusted config (T-03-INJ).
+    2. Assemble warm-ready payload (D-04) for Phase 4 real warm-transfer.
+    3. Set fm.state["outcome"] = "trasferito" (D-06 taxonomy).
+    4. Speak handoff courtesy phrase via TTSSpeakFrame (D-01).
+    5. Enqueue EndWorkerFrame UPSTREAM for clean pipeline shutdown (D-01 stub).
+    6. Call LocalTransferStub.transfer() as the domain seam (Phase 4 replaces impl).
+
+    Args:
+        args: Tool args dict — only ``reason`` (str) is read; all other keys
+              are ignored (T-03-INJ).
+        fm:   FlowManager instance providing ``fm.state`` and ``fm.worker``.
+
+    Returns:
+        (result_dict, None) — None keeps the flow in the current node; the
+        pipeline shuts down before any further node transition is needed.
+    """
+    from src.telephony.stub import LocalTransferStub
+
+    # --- Step 1: Resolve transfer_number from TRUSTED config only (T-03-INJ) ---
+    # NEVER read transfer_number from args — T-injection prevention.
+    tenant = fm.state.get("tenant")
+    transfer_number: str = (
+        (tenant.transfer_number if tenant and tenant.transfer_number else None)
+        or "operatore"
+    )
+
+    # Step 2a: Read reason from args (safe — logged only, never used for routing)
+    reason: str = args.get("reason", "richiesta_cliente")
+
+    # Step 2b: Assemble warm-ready payload (D-04) — Phase 4 uses for real warm transfer
+    warm_payload: dict = {
+        "transfer_number": transfer_number,
+        "reason": reason,
+        "booking_slot": fm.state.get("booking_slot"),
+        "customer": fm.state.get("customer"),
+        "confirmed_event_id": fm.state.get("confirmed_event_id"),
+    }
+
+    # Step 3: Record outcome and payload in flow state (D-06)
+    fm.state["transfer_payload"] = warm_payload
+    fm.state["transfer_reason"] = reason
+    fm.state["outcome"] = "trasferito"
+
+    # Step 4: Speak handoff phrase BEFORE ending pipeline (D-01 courtesy)
+    # append_to_context=False — this is a system message, not a conversational turn
+    await fm.worker.queue_frames(
+        [
+            TTSSpeakFrame(
+                text="La metto in contatto con un operatore, resti in linea.",
+                append_to_context=False,
+            )
+        ]
+    )
+
+    # Step 5: Clean shutdown — EndWorkerFrame UPSTREAM terminates the pipeline (D-01 stub)
+    await fm.worker.queue_frame(EndWorkerFrame(), FrameDirection.UPSTREAM)
+
+    # Step 6: Call the telephony seam (Phase 4 replaces LocalTransferStub with real impl)
+    # Security (T-03-LOG): stub logs only number + reason, never caller PII.
+    stub = LocalTransferStub()
+    await stub.transfer(transfer_number, warm_payload)
+
+    return {"transferred": True, "to": transfer_number}, None
 
 
 def build_route_to_faq_schema() -> FlowsFunctionSchema:
