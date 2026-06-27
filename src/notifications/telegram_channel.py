@@ -50,11 +50,14 @@ class TelegramNotificationChannel(NotificationChannel):
         import aiohttp  # noqa: PLC0415 — already a pipecat transitive dep
 
         url = f"{_TELEGRAM_API_BASE}{self._token}/sendMessage"
-        text = f"*{subject}*\n\n{body}"
+        # WR-06: send as plain text (no parse_mode). LLM-generated Italian summaries
+        # routinely contain Markdown-significant characters (_, *, [); with
+        # parse_mode="Markdown" unbalanced markup makes the Bot API return HTTP 400
+        # and the owner silently loses that call's summary.
+        text = f"{subject}\n\n{body}"
         payload = {
             "chat_id": self._chat_id,
             "text": text,
-            "parse_mode": "Markdown",
         }
         try:
             async with aiohttp.ClientSession() as session:
