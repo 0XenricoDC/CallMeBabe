@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "03-01 Task 2 complete — awaiting Task 3 live human-verify checkpoint"
-last_updated: "2026-06-27T13:30:00Z"
-last_activity: 2026-06-27 -- Phase 03 plan 01 tasks 1-2 complete
+stopped_at: "03-01 finalized (code complete); SC1 live verify deferred/pending"
+last_updated: "2026-06-27T13:45:00Z"
+last_activity: 2026-06-27 -- Phase 03 plan 01 finalized; SC1 live test pending owner
 progress:
   total_phases: 5
   completed_phases: 2
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (handoff-summary-notifications) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 03 — Plan 01 Tasks 1-2 committed; paused at Task 3 human-verify
-Last activity: 2026-06-27 -- Phase 03 plan 01 tasks 1-2 complete
+Plan: 1 of 4 (code complete; SC1 live verification pending)
+Status: Plan 01 finalized — automated tasks done (77 tests pass); SC1 live human-verify DEFERRED
+Last activity: 2026-06-27 -- Phase 03 plan 01 finalized; SC1 live test pending owner
 
 Progress: [████████████████████] 7/7 plans complete (Phases 1-2 done; Phases 3-5 not yet planned)
 
@@ -100,6 +100,10 @@ Recent decisions affecting current work:
 - [Phase 02]: [02-04]: Hybrid FAQ routing: _HOURS_KEYWORDS/_SERVICES_KEYWORDS token intersection → config fields; else FTS5 (D-06)
 - [Phase 02]: [02-04]: W1 routing: build_greeting_node exposes route_to_faq + route_to_booking FlowsFunctionSchema tools (explicit tool-driven, not prose)
 - [Phase 02]: [02-04]: Ingest idempotency via DELETE WHERE tenant_id = ? before INSERT (FTS5 has no UNIQUE — only safe mechanism)
+- [Phase 03]: [03-01]: transfer_number resolved ONLY from fm.state['tenant'].transfer_number; args carry just a logged 'reason' (T-03-INJ — malicious-arg test asserts it)
+- [Phase 03]: [03-01]: Global transfer_call wired once via FlowManager(global_functions=[...]); nodes never import the schema — reachable from any node (HAND-04)
+- [Phase 03]: [03-01]: FrameDirection imports from pipecat.processors.frame_processor (NOT pipecat.frames.frames) in pipecat 1.4.0
+- [Phase 03]: [03-01]: Frame side-effects (TTSSpeakFrame handoff + EndWorkerFrame UPSTREAM) live in handle_transfer_call; LocalTransferStub stays a pure log-only domain seam for Phase 4
 
 ### Pending Todos
 
@@ -107,6 +111,7 @@ None yet.
 
 ### Blockers/Concerns
 
+- [03-01] SC1 live verification PENDING (deferred by owner): 5 spoken transfer scenarios (explicit request, mid-booking, FAQ-not-found offer, non-Italian, config-number integrity) must be run manually via `python main.py --tenant=demo`. Code + automated tests complete (77 pass); behavioral guarantee unconfirmed. See 03-01-SUMMARY.md §Pending Human Verification.
 - Phase 4 (Telnyx): HIGH research flag from SUMMARY.md — plan `/gsd:plan-phase 4` should use `--research-phase`.
 - Phase 2 (Booking/Calendar): MEDIUM research flag — Google Calendar freebusy inversion and transactional reserve schema have documented subtleties.
 

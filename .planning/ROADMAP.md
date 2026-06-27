@@ -101,7 +101,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Slice: transfer-from-anywhere — TelephonyProvider seam + stub, global transfer Flows function, auto-triggers (non-IT/uncertainty/FAQ-offer) (HAND-01..04, SC1)
+- [x] 03-01-PLAN.md — Slice: transfer-from-anywhere — TelephonyProvider seam + stub, global transfer Flows function, auto-triggers (non-IT/uncertainty/FAQ-offer) (HAND-01..04, SC1)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -156,6 +156,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
 | 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
-| 3. Handoff + Summary + Notifications | 0/4 | Not started | - |
+| 3. Handoff + Summary + Notifications | 1/4 | In Progress|  |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |
