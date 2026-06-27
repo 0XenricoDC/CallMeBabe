@@ -71,3 +71,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks USING fts5(
     content,
     tokenize  = "unicode61"
 );
+
+-- Phase 3 addition (Plan 03-02) to schema.sql
+-- call_logs: one row per completed call (NOTIF-01, D-06, D-08).
+-- transcript_json: JSON array of {role, content} messages from context.messages.
+-- outcome: tassonomia D-06 — prenotato/faq/trasferito/abbandonato/fallito.
+-- Postgres-migration note: transcript_json maps 1:1 to JSONB; no schema change.
+CREATE TABLE IF NOT EXISTS call_logs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id         TEXT NOT NULL REFERENCES tenants(id),
+    started_at        TEXT NOT NULL,              -- ISO 8601 call start time (Europe/Rome)
+    ended_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    duration_secs     INTEGER,                    -- (ended_at - started_at) in seconds
+    outcome           TEXT NOT NULL
+                        CHECK(outcome IN ('prenotato','faq','trasferito','abbandonato','fallito')),
+    transcript_json   TEXT NOT NULL,              -- JSON array [{role, content}, ...]
+    summary_text      TEXT,                       -- 2-3 frasi LLM (D-05), NULL if gen failed
+    reservation_id    INTEGER REFERENCES reservations(id),   -- set for 'prenotato'
+    google_event_id   TEXT,                       -- shortcut for notification display
+    transfer_number   TEXT,                       -- resolved number for 'trasferito'
+    channel_sent      TEXT,                       -- notification channel name used
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_call_logs_tenant
+    ON call_logs(tenant_id, started_at);
