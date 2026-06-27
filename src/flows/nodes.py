@@ -68,7 +68,7 @@ def build_greeting_node(tenant: TenantConfig) -> dict:
     }
 
 
-def build_booking_node(tenant: TenantConfig) -> dict:
+def build_booking_node(tenant: TenantConfig | None = None) -> dict:
     """Booking data-collection node (D-13).
 
     Exposes only the booking tools:
@@ -88,13 +88,18 @@ def build_booking_node(tenant: TenantConfig) -> dict:
         build_correct_booking_field_schema,
     )
 
+    # WR-05: null-safe like build_faq_node / build_end_node — handle_route_to_booking
+    # passes fm.state.get("tenant"), which can be None; dereferencing tenant.business_name
+    # unconditionally would crash the booking transition mid-call (AttributeError).
+    business_name = tenant.business_name if tenant else "la nostra struttura"
+
     # Inject today's date (Europe/Rome) so the LLM resolves relative dates like
     # "8 luglio" to the correct year instead of defaulting to a past one.
     oggi = datetime.now(_ROME_TZ).strftime("%Y-%m-%d")
     return {
         "name": "booking",
         "role_message": (
-            f"Sei la receptionist di {tenant.business_name}. "
+            f"Sei la receptionist di {business_name}. "
             f"La data di oggi è {oggi} (fuso Europe/Rome). "
             "Quando il cliente indica solo giorno e mese, usa l'anno corrente; "
             "se quella data è già passata, usa l'anno successivo. "
