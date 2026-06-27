@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: 03-03 Task 3 human-verify checkpoint (live end-of-call notification test — SC2)
-last_updated: "2026-06-27T14:12:00Z"
+stopped_at: 03-04 Task 4 human-verify checkpoint (live degradation ladder — SC3/SC4/SC5)
+last_updated: "2026-06-27T14:45:00Z"
 last_activity: 2026-06-27
 progress:
   total_phases: 5
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (handoff-summary-notifications) — EXECUTING
-Plan: 3 of 4 (code complete; SC2 live verification pending)
-Status: Paused at SC2 human-verify checkpoint
+Plan: 4 of 4 (Tasks 1-3 code complete; SC3/SC4/SC5 live verification pending)
+Status: Paused at SC3/SC4/SC5 human-verify checkpoint (Task 4 of 03-04)
 Last activity: 2026-06-27
 
 Progress: [████████░░] 82%
@@ -114,6 +114,10 @@ Recent decisions affecting current work:
 - [Phase 03]: [03-03]: End-of-call try/finally in bot.py fires for EVERY call/outcome (D-07); order: _determine_outcome → generate_summary → CallLogRepository.write → channel.send
 - [Phase 03]: [03-03]: channel.send failure in finally is caught and logged by type only — call shutdown never blocked (T-03-FIN)
 - [Phase 03]: [03-03]: ROME_TZ uses fixed UTC+1 timedelta (no pytz/zoneinfo dep in Phase 3); Phase 4+ can upgrade to zoneinfo.ZoneInfo("Europe/Rome") for DST accuracy
+- [Phase 03]: [03-04]: LazyWhisperSTTService overrides _load() to no-op + run_stt() for lazy model load via asyncio.to_thread (D-12); WorkerRefHolder breaks circular dep with PipelineWorker (same pattern as ErrorFallbackObserver)
+- [Phase 03]: [03-04]: _ESCALATION_THRESHOLD=3 in fallback.py; after 3 retry-slot cycles sets outcome='fallito' + EndWorkerFrame (idempotent via _escalated flag); ErrorFrame.error never logged (V7/T-03-LOG preserved)
+- [Phase 03]: [03-04]: Dead-air watchdog T1=6s/T2=8s (D-14 Claude's Discretion); _DeadAirHandler in bot.py; UserIdleTimeoutUpdateFrame raises timeout to T2 after re-prompt so T1≠T2 windows are distinct
+- [Phase 03]: [03-04]: build.py STT slot now ServiceSwitcher([deepgram, lazy_whisper], failover); test_pipeline.py patched to use build.build_stt_switcher mock (not factory.DeepgramSTTService)
 
 ### Pending Todos
 
@@ -123,6 +127,7 @@ None yet.
 
 - [03-01] SC1 live verification PENDING (deferred by owner): 5 spoken transfer scenarios (explicit request, mid-booking, FAQ-not-found offer, non-Italian, config-number integrity) must be run manually via `python main.py --tenant=demo`. Code + automated tests complete (77 pass); behavioral guarantee unconfirmed. See 03-01-SUMMARY.md §Pending Human Verification.
 - [03-03] SC2 live verification PENDING (blocking checkpoint): end-of-call notification hook must be verified manually — run a booking + an abandoned call, confirm [CALL LOG] line in console and call_logs DB row. Automated tests complete (103 pass); live behavioral guarantee unconfirmed.
+- [03-04] SC3/SC4/SC5 live verification PENDING (blocking checkpoint, Task 4): forced-failure degradation ladder must be verified manually with python main.py --tenant=demo (set DEEPGRAM_API_KEY=invalid for SC3/SC4; stay silent 6s/8s for SC5). Automated tests complete (115 pass, 1 skipped).
 - Phase 4 (Telnyx): HIGH research flag from SUMMARY.md — plan `/gsd:plan-phase 4` should use `--research-phase`.
 - Phase 2 (Booking/Calendar): MEDIUM research flag — Google Calendar freebusy inversion and transactional reserve schema have documented subtleties.
 
@@ -140,6 +145,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-27T14:12:00Z
-Stopped at: 03-03 Task 3 human-verify checkpoint (live end-of-call notification test — SC2)
+Last session: 2026-06-27T14:45:00Z
+Stopped at: 03-04 Task 4 human-verify checkpoint (live SC3/SC4/SC5 degradation ladder)
 Resume file: None
