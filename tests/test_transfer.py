@@ -199,6 +199,9 @@ async def test_local_transfer_stub_no_pii_in_log(caplog):
     full_log = " ".join(captured_messages)
     assert "Mario Rossi" not in full_log, "Caller name must NOT be logged by stub"
     assert "333 1234567" not in full_log, "Caller phone must NOT be logged by stub"
-    assert "333" not in full_log or "transfer" in full_log.lower(), (
-        "Phone digits must not leak into stub log output"
+    # WR-07: assert unconditionally that the caller's phone digits are absent. The
+    # old `... or "transfer" in full_log.lower()` could never fail because the stub
+    # always logs the word "transfer", so the PII check was inert.
+    assert "333" not in full_log, (
+        "Caller phone digits must not leak into stub log output"
     )

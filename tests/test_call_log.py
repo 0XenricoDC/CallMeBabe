@@ -112,9 +112,11 @@ async def test_outcome_check_constraint(call_log_repo):
             transcript_json=[{"role": "user", "content": "test"}],
         )
 
-    # SQLite raises IntegrityError (or a subclass) for CHECK constraint violations
-    assert issubclass(exc_info.type, (sqlite3.IntegrityError, Exception)), (
-        "Invalid outcome must raise an exception (IntegrityError expected)"
+    # WR-07: assert the exact type — the old `(sqlite3.IntegrityError, Exception)`
+    # tuple was a tautology (everything subclasses Exception), so the test passed
+    # even for unrelated errors. CHECK violations raise sqlite3.IntegrityError.
+    assert exc_info.type is sqlite3.IntegrityError, (
+        f"Invalid outcome must raise sqlite3.IntegrityError, got: {exc_info.type!r}"
     )
     # The error must reference the constraint (not a silent insert of wrong data)
     err_str = str(exc_info.value).lower()
@@ -149,10 +151,16 @@ async def test_transcript_json_stores_array(call_log_repo):
             row = await cur.fetchone()
 
     assert row is not None
-    # Italian characters must survive (ensure_ascii=False)
+    # WR-07: exercise the ensure_ascii=False guarantee directly. The old assertion's
+    # right operand (content ends in "?") was always true, so the accented-char check
+    # was never reached. The fixture contains "È" (U+00C8); assert it is stored
+    # literally and NOT as its \uXXXX escape.
     raw = row[0]
-    assert "è" in raw or json.loads(raw)[1]["content"].count("?") >= 1, (
-        "Italian characters must be preserved in transcript_json (ensure_ascii=False)"
+    assert "È" in raw, (
+        "Italian accented characters must be stored literally (ensure_ascii=False)"
+    )
+    assert "\\u00c8" not in raw, (
+        "Accented characters must NOT be \\uXXXX-escaped (ensure_ascii=False)"
     )
     assert json.loads(raw) == transcript
 
