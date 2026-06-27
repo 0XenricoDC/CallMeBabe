@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "03-01 finalized (code complete); SC1 live verify deferred/pending"
-last_updated: "2026-06-27T13:45:00Z"
-last_activity: 2026-06-27 -- Phase 03 plan 01 finalized; SC1 live test pending owner
+stopped_at: 03-01 Task 3 human-verify checkpoint (live transfer test — SC1)
+last_updated: "2026-06-27T12:02:42.914Z"
+last_activity: 2026-06-27
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 11
-  completed_plans: 7
+  completed_plans: 9
   percent: 40
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 ## Current Position
 
 Phase: 03 (handoff-summary-notifications) — EXECUTING
-Plan: 1 of 4 (code complete; SC1 live verification pending)
-Status: Plan 01 finalized — automated tasks done (77 tests pass); SC1 live human-verify DEFERRED
-Last activity: 2026-06-27 -- Phase 03 plan 01 finalized; SC1 live test pending owner
+Plan: 2 of 4 (code complete; SC1 live verification pending)
+Status: Ready to execute
+Last activity: 2026-06-27
 
-Progress: [████████████████████] 7/7 plans complete (Phases 1-2 done; Phases 3-5 not yet planned)
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [████████████████████] 7/7 pla
 | Phase 02-booking-calendar-faq P02 | 15 | 3 tasks | 13 files |
 | Phase 02-booking-calendar-faq P03 | 14 | 2 tasks | 6 files |
 | Phase 02-booking-calendar-faq P04 | 20 | 2 tasks | 8 files |
+| Phase 03 P02 | 6 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,10 @@ Recent decisions affecting current work:
 - [Phase 03]: [03-01]: Global transfer_call wired once via FlowManager(global_functions=[...]); nodes never import the schema — reachable from any node (HAND-04)
 - [Phase 03]: [03-01]: FrameDirection imports from pipecat.processors.frame_processor (NOT pipecat.frames.frames) in pipecat 1.4.0
 - [Phase 03]: [03-01]: Frame side-effects (TTSSpeakFrame handoff + EndWorkerFrame UPSTREAM) live in handle_transfer_call; LocalTransferStub stays a pure log-only domain seam for Phase 4
+- [Phase 03]: [03-02]: CallLogRepository.write() uses cursor.lastrowid (direct aiosqlite cursor property; avoids SELECT last_insert_rowid() round-trip)
+- [Phase 03]: [03-02]: generate_summary uses tenant.model exclusively — no hardcoded competing model id (CLAUDE.md constraint, RESEARCH A2 verify-at-build)
+- [Phase 03]: [03-02]: transcript_json stored with ensure_ascii=False so Italian chars survive JSON round-trip to notification body
+- [Phase 03]: [03-02]: _determine_outcome priority: explicit state['outcome'] wins; then confirmed_event_id→prenotato; faq_answered→faq; booking_slot-no-event→abbandonato; default faq
 
 ### Pending Todos
 
@@ -129,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-27T13:30:00Z
+Last session: 2026-06-27T12:02:42.898Z
 Stopped at: 03-01 Task 3 human-verify checkpoint (live transfer test — SC1)
-Resume file: .planning/phases/03-handoff-summary-notifications/03-01-PLAN.md
+Resume file: None

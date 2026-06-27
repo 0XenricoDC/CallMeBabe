@@ -105,7 +105,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 03-02-PLAN.md — call_logs schema + CallLogRepository + LLM summary + outcome taxonomy (NOTIF-01/02, D-05/06/08)
+- [x] 03-02-PLAN.md — call_logs schema + CallLogRepository + LLM summary + outcome taxonomy (NOTIF-01/02, D-05/06/08)
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -156,6 +156,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
 | 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
-| 3. Handoff + Summary + Notifications | 1/4 | In Progress|  |
+| 3. Handoff + Summary + Notifications | 2/4 | In Progress|  |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |

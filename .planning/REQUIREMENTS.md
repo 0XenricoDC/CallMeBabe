@@ -39,8 +39,8 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 
 ### Riepilogo e notifiche (Notify)
 
-- [ ] **NOTIF-01**: A fine chiamata il bot registra un log della chiamata (trascrizione, esito, eventuale prenotazione)
-- [ ] **NOTIF-02**: Il bot genera un riepilogo testuale della chiamata (trascrizione + esito + dettagli prenotazione)
+- [x] **NOTIF-01**: A fine chiamata il bot registra un log della chiamata (trascrizione, esito, eventuale prenotazione)
+- [x] **NOTIF-02**: Il bot genera un riepilogo testuale della chiamata (trascrizione + esito + dettagli prenotazione)
 - [ ] **NOTIF-03**: Il riepilogo viene inviato al titolare tramite un layer notifiche astratto (`NotificationChannel`)
 - [ ] **NOTIF-04**: Sono implementati i canali Email/SMTP, SMS/WhatsApp, Telegram e log su DB
 - [ ] **NOTIF-05**: Il canale di notifica è scelto per-cliente dalla config
@@ -138,8 +138,8 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 | HAND-02 | Phase 3 | Pending |
 | HAND-03 | Phase 3 | Pending |
 | HAND-04 | Phase 3 | Pending |
-| NOTIF-01 | Phase 3 | Pending |
-| NOTIF-02 | Phase 3 | Pending |
+| NOTIF-01 | Phase 3 | Complete |
+| NOTIF-02 | Phase 3 | Complete |
 | NOTIF-03 | Phase 3 | Pending |
 | NOTIF-04 | Phase 3 | Pending |
 | NOTIF-05 | Phase 3 | Pending |
