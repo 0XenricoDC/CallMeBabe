@@ -425,6 +425,14 @@ async def bot(runner_args: RunnerArguments) -> None:
     # pattern mirrors error_observer.worker patch above).
     error_observer.flow_manager = flow_manager
 
+    # REL-02/SC4 (Phase 03-06): patch STT switcher holder with FlowManager reference.
+    # The on_service_switched escalation handler in build_stt_switcher() needs access
+    # to flow_manager so it can set state['outcome']='fallito' and the shared guard
+    # state['_stt_escalated'] on SC4 escalation. Same circular-dep pattern as above.
+    # This MUST be set after flow_manager is created; the holder is safe to patch here
+    # because the switcher's strategy only references it inside the async handler.
+    build.worker_ref_holder.flow_manager = flow_manager
+
     # Wire the real CalendarProvider now that the tenant is loaded. setup_flow()
     # leaves state["calendar_provider"] = None; without this the booking handler
     # calls create_event on None, which surfaces to the caller as the spurious
