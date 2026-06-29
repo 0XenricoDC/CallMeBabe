@@ -76,10 +76,14 @@ def build_pipeline(transport, tenant: TenantConfig) -> BuildResult:
         → transport.output() → aggregators.assistant()
     """
     # --- STT switcher (REL-03: Deepgram primary → LazyWhisperSTTService fallback) ---
-    # Phase 03-04 replaces the standalone stt with a ServiceSwitcher that auto-fails
-    # over to faster-whisper on persistent Deepgram errors (D-12 lazy load, SC3).
-    # worker_ref_holder.worker is patched after PipelineWorker creation in bot.py
-    # (circular-dep pattern, same as ErrorFallbackObserver).
+    # Phase 03-04: ServiceSwitcher([deepgram, lazy_whisper], failover) in the STT slot.
+    # Phase 03-06: primary service is now FailoverDeepgramSTTService — a subclass of
+    #   DeepgramSTTService that adds a connection-health monitor. When the Deepgram
+    #   connection is persistently not ready (e.g. invalid DEEPGRAM_API_KEY → 401),
+    #   the monitor calls push_error so the ServiceSwitcher can fail over to
+    #   faster-whisper (SC3) and escalate after repeated failures (SC4).
+    # worker_ref_holder.worker and .flow_manager are patched in bot.py after the
+    # PipelineWorker and FlowManager are created (circular-dep pattern).
     worker_ref_holder = WorkerRefHolder()
     stt_switcher = build_stt_switcher(worker_ref_holder)
 

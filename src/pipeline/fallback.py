@@ -125,18 +125,31 @@ class ErrorFallbackObserver(BaseObserver):
             # REL-02 escalation: after N consecutive courtesy-phrase cycles, give up.
             # _escalated guard ensures this fires at most once per call session (SC4).
             if esc_count >= _ESCALATION_THRESHOLD and not self._escalated:
+                # Plan 03-06: shared escalation guard.
+                # If stt_switcher's on_service_switched already escalated (set
+                # flow_manager.state['_stt_escalated']), skip the EndWorkerFrame here
+                # so both mechanisms cannot fire it at the same time (T-03-FIN).
+                shared_escalated = (
+                    self.flow_manager is not None
+                    and self.flow_manager.state.get("_stt_escalated", False)
+                )
+                # Always set the local flag to prevent further observer-side checks.
                 self._escalated = True
-                # Record 'fallito' outcome for the end-of-call hook (D-06 taxonomy).
-                if self.flow_manager is not None:
-                    self.flow_manager.state["outcome"] = "fallito"
-                # Queue: escalation phrase + EndWorkerFrame (SC4 — no long dead-air).
-                # EndWorkerFrame terminates the pipeline cleanly (same pattern as
-                # handle_transfer_call in flows/functions.py).
-                # Security (V7/T-03-LOG): phrase is static — no ErrorFrame.error content.
-                await self.worker.queue_frames([
-                    TTSSpeakFrame(
-                        text=_ESCALATION_PHRASE,
-                        append_to_context=False,
-                    ),
-                    EndWorkerFrame(),
-                ])
+
+                if not shared_escalated:
+                    # Record 'fallito' outcome for the end-of-call hook (D-06 taxonomy).
+                    if self.flow_manager is not None:
+                        self.flow_manager.state["outcome"] = "fallito"
+                        # Set shared guard so the switcher won't double-fire either.
+                        self.flow_manager.state["_stt_escalated"] = True
+                    # Queue: escalation phrase + EndWorkerFrame (SC4 — no long dead-air).
+                    # EndWorkerFrame terminates the pipeline cleanly (same pattern as
+                    # handle_transfer_call in flows/functions.py).
+                    # Security (V7/T-03-LOG): phrase is static — no ErrorFrame.error content.
+                    await self.worker.queue_frames([
+                        TTSSpeakFrame(
+                            text=_ESCALATION_PHRASE,
+                            append_to_context=False,
+                        ),
+                        EndWorkerFrame(),
+                    ])

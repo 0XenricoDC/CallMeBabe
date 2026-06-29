@@ -59,7 +59,11 @@ def test_lazy_whisper_no_eager_load():
 # ---------------------------------------------------------------------------
 
 def test_build_stt_switcher_returns_service_switcher():
-    """REL-03: build_stt_switcher() must return a ServiceSwitcher instance."""
+    """REL-03: build_stt_switcher() must return a ServiceSwitcher instance.
+
+    Plan 03-06: patch FailoverDeepgramSTTService (not DeepgramSTTService) since
+    build_stt_switcher now constructs the subclass.
+    """
     from pipecat.pipeline.service_switcher import ServiceSwitcher
 
     from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
@@ -67,10 +71,10 @@ def test_build_stt_switcher_returns_service_switcher():
     holder = WorkerRefHolder()
 
     with (
-        patch("src.pipeline.stt_switcher.DeepgramSTTService") as MockDeepgram,
+        patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockDeepgram,
         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockWhisper,
     ):
-        MockDeepgram.return_value = MagicMock(name="DeepgramSTT")
+        MockDeepgram.return_value = MagicMock(name="FailoverDeepgramSTT")
         MockWhisper.return_value = MagicMock(name="LazyWhisperSTT")
 
         stt_switcher = build_stt_switcher(holder)
@@ -81,16 +85,19 @@ def test_build_stt_switcher_returns_service_switcher():
 
 
 def test_build_stt_switcher_has_two_services():
-    """REL-03: build_stt_switcher() must return a switcher with exactly two services."""
+    """REL-03: build_stt_switcher() must return a switcher with exactly two services.
+
+    Plan 03-06: patch FailoverDeepgramSTTService (not DeepgramSTTService).
+    """
     from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
 
     holder = WorkerRefHolder()
 
     with (
-        patch("src.pipeline.stt_switcher.DeepgramSTTService") as MockDeepgram,
+        patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockDeepgram,
         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockWhisper,
     ):
-        mock_deepgram = MagicMock(name="DeepgramSTT")
+        mock_deepgram = MagicMock(name="FailoverDeepgramSTT")
         mock_whisper = MagicMock(name="LazyWhisperSTT")
         MockDeepgram.return_value = mock_deepgram
         MockWhisper.return_value = mock_whisper
@@ -98,12 +105,15 @@ def test_build_stt_switcher_has_two_services():
         stt_switcher = build_stt_switcher(holder)
 
     assert len(stt_switcher._services) == 2, (
-        "ServiceSwitcher must have exactly two services: [deepgram, lazy_whisper] (REL-03)."
+        "ServiceSwitcher must have exactly two services: [failover_deepgram, lazy_whisper] (REL-03)."
     )
 
 
 def test_build_stt_switcher_strategy_is_failover():
-    """REL-03: build_stt_switcher() must use ServiceSwitcherStrategyFailover."""
+    """REL-03: build_stt_switcher() must use ServiceSwitcherStrategyFailover.
+
+    Plan 03-06: patch FailoverDeepgramSTTService (not DeepgramSTTService).
+    """
     from pipecat.pipeline.service_switcher import ServiceSwitcherStrategyFailover
 
     from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
@@ -111,10 +121,10 @@ def test_build_stt_switcher_strategy_is_failover():
     holder = WorkerRefHolder()
 
     with (
-        patch("src.pipeline.stt_switcher.DeepgramSTTService") as MockDeepgram,
+        patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockDeepgram,
         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockWhisper,
     ):
-        MockDeepgram.return_value = MagicMock(name="DeepgramSTT")
+        MockDeepgram.return_value = MagicMock(name="FailoverDeepgramSTT")
         MockWhisper.return_value = MagicMock(name="LazyWhisperSTT")
 
         stt_switcher = build_stt_switcher(holder)
@@ -125,7 +135,12 @@ def test_build_stt_switcher_strategy_is_failover():
 
 
 def test_build_stt_switcher_deepgram_api_key_from_env():
-    """Security (T-02-KEY): DeepgramSTTService must receive api_key from os.getenv only."""
+    """Security (T-02-KEY): FailoverDeepgramSTTService must receive api_key from os.getenv only.
+
+    Plan 03-06: patching FailoverDeepgramSTTService instead of DeepgramSTTService since
+    build_stt_switcher now constructs the subclass. The api_key is still sourced from
+    os.getenv — this test verifies that the env-read path is unchanged.
+    """
     from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
 
     holder = WorkerRefHolder()
@@ -133,18 +148,20 @@ def test_build_stt_switcher_deepgram_api_key_from_env():
 
     def _capture_deepgram(*args, **kwargs):
         captured_deepgram_kwargs.update(kwargs)
-        m = MagicMock(name="DeepgramSTT")
+        m = MagicMock(name="FailoverDeepgramSTT")
         return m
 
     with (
-        patch("src.pipeline.stt_switcher.DeepgramSTTService", side_effect=_capture_deepgram),
+        patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService", side_effect=_capture_deepgram),
         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockWhisper,
         patch("src.pipeline.stt_switcher.os.getenv", return_value="test-dg-key") as mock_env,
     ):
         MockWhisper.return_value = MagicMock(name="LazyWhisperSTT")
         build_stt_switcher(holder)
 
-    assert "api_key" in captured_deepgram_kwargs, "DeepgramSTTService must receive api_key kwarg."
+    assert "api_key" in captured_deepgram_kwargs, (
+        "FailoverDeepgramSTTService must receive api_key kwarg (T-02-KEY)."
+    )
     assert captured_deepgram_kwargs["api_key"] == "test-dg-key", (
         "api_key must come from os.getenv (not hardcoded)."
     )
