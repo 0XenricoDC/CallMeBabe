@@ -220,3 +220,67 @@ async def test_generate_summary_key_from_env():
     assert passed_key == fake_key, (
         f"ANTHROPIC_API_KEY from env must be passed to AsyncAnthropic. Got: {passed_key!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Outcome-precedence regression tests (D-06 confirmed-booking bug, 260629-tkr)
+# ---------------------------------------------------------------------------
+# These four tests document the correct priority ordering for _determine_outcome.
+# Tests 1 and 4 FAIL against the original (buggy) ordering (Rule 1 was generic
+# explicit-outcome; watchdog could bury a confirmed booking).  Tests 2 and 3
+# already passed with the old code but are included as guards to prevent future
+# regressions.
+# ---------------------------------------------------------------------------
+
+
+def test_determine_outcome_confirmed_event_beats_fallito():
+    """A watchdog-set 'fallito' must NEVER bury a confirmed booking.
+
+    D-06 / 260629-tkr root-cause regression: after a booking confirms, the
+    dead-air watchdog (T2) can write state['outcome'] = 'fallito'. With the
+    old priority (Rule 1 = any explicit outcome), the booking was lost.
+
+    Correct behaviour: confirmed_event_id present → 'prenotato' regardless
+    of a later 'fallito' set by background watchers.
+    """
+    from src.call_log.summary import _determine_outcome  # noqa: PLC0415
+
+    state = {"confirmed_event_id": "evt-9", "outcome": "fallito"}
+    assert _determine_outcome(state) == "prenotato"
+
+
+def test_determine_outcome_trasferito_beats_confirmed_event():
+    """Deliberate human handoff ('trasferito') surfaces to the owner even when a
+    booking was confirmed in the same call (e.g. partial booking then transfer).
+
+    'trasferito' is the only outcome that should take precedence over
+    confirmed_event_id because it represents an explicit operator decision.
+    """
+    from src.call_log.summary import _determine_outcome  # noqa: PLC0415
+
+    state = {"confirmed_event_id": "evt-9", "outcome": "trasferito"}
+    assert _determine_outcome(state) == "trasferito"
+
+
+def test_determine_outcome_confirmed_event_no_explicit_outcome():
+    """Happy-path guard: confirmed_event_id with no explicit outcome → 'prenotato'.
+
+    Verifies the base case (no watchdog interference) remains correct after
+    the priority reorder.
+    """
+    from src.call_log.summary import _determine_outcome  # noqa: PLC0415
+
+    state = {"confirmed_event_id": "evt-9"}
+    assert _determine_outcome(state) == "prenotato"
+
+
+def test_determine_outcome_confirmed_event_beats_abbandonato():
+    """A stale 'abbandonato' must not downgrade a confirmed booking.
+
+    If state['outcome'] was set to 'abbandonato' (e.g. by a timeout path that
+    ran before the booking completed), a subsequently confirmed event must win.
+    """
+    from src.call_log.summary import _determine_outcome  # noqa: PLC0415
+
+    state = {"confirmed_event_id": "evt-9", "outcome": "abbandonato"}
+    assert _determine_outcome(state) == "prenotato"
