@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Local Voice Loop** - Italian conversational agent working locally on mic/headset with streaming pipeline, barge-in, personalized greeting, and latency instrumentation (completed 2026-06-24)
 - [x] **Phase 2: Booking + Calendar + FAQ** - Structured Pipecat Flows booking with real Google Calendar write, capacity check, spoken read-back/confirm gating, and per-tenant RAG FAQ
  (completed 2026-06-26)
-- [ ] **Phase 3: Handoff + Summary + Notifications** - Operator transfer from any point, end-of-call log and summary, multi-channel owner notification, full provider-failure fallback chain with dead-air watchdog (code complete 2026-06-27; verification gaps_found — see 03-VERIFICATION.md)
+- [x] **Phase 3: Handoff + Summary + Notifications** - Operator transfer from any point, end-of-call log and summary, multi-channel owner notification, full provider-failure fallback chain with dead-air watchdog (code complete 2026-06-27; verification gaps_found — see 03-VERIFICATION.md) (completed 2026-06-29)
 - [ ] **Phase 4: Telnyx Telephony** - Real inbound Italian calls via Telnyx, DID-to-tenant routing, all M1-M3 behaviors verified on the 8kHz phone path
 - [ ] **Phase 5: Multi-Tenant + Onboarding** - Full per-client config isolation, tenant_id-scoped persistence, onboarding CLI, and per-client credential store
 
@@ -118,7 +118,7 @@ Plans:
 **Gap Closure** *(from live UAT — run via `/gsd:execute-phase 3 --gaps-only`)*
 
 - [x] 03-05-PLAN.md — GAP SC2: D-11 demo-default multi-send (log + telegram if token present) — MultiNotificationChannel + factory selection (NOTIF-03/04/05)
-- [ ] 03-06-PLAN.md — GAP SC3/SC4: real-error-path STT failover + escalation — FailoverDeepgramSTTService connection monitor surfaces 401/connection-down as ErrorFrame; whisper error-yield; switch-driven escalation to outcome 'fallito' (REL-02/03)
+- [x] 03-06-PLAN.md — GAP SC3/SC4: real-error-path STT failover + escalation — FailoverDeepgramSTTService connection monitor surfaces 401/connection-down as ErrorFrame; whisper error-yield; switch-driven escalation to outcome 'fallito' (REL-02/03)
 
 ### Phase 4: Telnyx Telephony
 
@@ -161,6 +161,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Local Voice Loop | 3/3 | Complete   | 2026-06-24 |
 | 2. Booking + Calendar + FAQ | 4/4 | Complete    | 2026-06-26 |
-| 3. Handoff + Summary + Notifications | 5/6 | In Progress|  |
+| 3. Handoff + Summary + Notifications | 6/6 | Complete   | 2026-06-29 |
 | 4. Telnyx Telephony | 0/TBD | Not started | - |
 | 5. Multi-Tenant + Onboarding | 0/TBD | Not started | - |

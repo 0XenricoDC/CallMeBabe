@@ -48,8 +48,8 @@ Requisiti per il rilascio iniziale. Ogni requisito mappa a una fase del roadmap.
 ### Affidabilità e fallback (Reliability)
 
 - [x] **REL-01**: Se STT/LLM/TTS falliscono durante la chiamata, il bot pronuncia frasi di cortesia anziché lasciare dead-air
-- [ ] **REL-02**: In caso di guasto persistente di un provider, il bot offre/effettua il trasferimento all'operatore
-- [ ] **REL-03**: È predisposto un fallback STT self-hosted (faster-whisper) attivabile in alternativa a Deepgram
+- [x] **REL-02**: In caso di guasto persistente di un provider, il bot offre/effettua il trasferimento all'operatore
+- [x] **REL-03**: È predisposto un fallback STT self-hosted (faster-whisper) attivabile in alternativa a Deepgram
 - [ ] **REL-04**: Un watchdog rileva il dead-air / silenzio anomalo e innesca la strategia di recupero
 
 ### Telefonia (Telephony)
@@ -143,8 +143,8 @@ Quali fasi coprono quali requisiti. Aggiornata durante la creazione del roadmap.
 | NOTIF-03 | Phase 3 | Complete |
 | NOTIF-04 | Phase 3 | Complete |
 | NOTIF-05 | Phase 3 | Complete |
-| REL-02 | Phase 3 | Pending |
-| REL-03 | Phase 3 | Pending |
+| REL-02 | Phase 3 | Complete |
+| REL-03 | Phase 3 | Complete |
 | REL-04 | Phase 3 | Pending |
 | TEL-01 | Phase 4 | Pending |
 | TEL-02 | Phase 4 | Pending |
