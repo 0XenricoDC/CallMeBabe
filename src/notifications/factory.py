@@ -7,12 +7,21 @@ environment variables (T-03-NINJ).
 Mirrors ``get_stt_provider`` in ``src/pipeline/factory.py``:
 - A name → class dict with an explicit fallback.
 - Credentials sourced only via ``os.getenv`` — never from caller args or tenant config.
-- Unknown / None names fall back to ``LogNotificationChannel`` (D-11 default).
+- Unknown / None names fall back to the demo-default branch (D-11).
+
+Demo-default multi-send (D-11):
+  When the channel name is unset / None / "log" AND both TELEGRAM_BOT_TOKEN and
+  TELEGRAM_CHAT_ID are present (non-empty) in the environment, the factory returns
+  MultiNotificationChannel([LogNotificationChannel(), TelegramNotificationChannel(...)])
+  so the end-of-call summary is dispatched to BOTH the console log AND Telegram.
+  When either Telegram env var is absent or empty, it returns LogNotificationChannel()
+  only — no crash, no partial Telegram send.
 
 Security:
 - T-03-NINJ: channel targets (chat_id, SMTP_TO, token) come only from env via this
   factory. The ``tenant`` arg selects the channel *name* only — zero routing influence
-  from caller args or the transcript.
+  from caller args or the transcript.  Both Telegram env vars must be non-empty before
+  the Telegram leg is added to the composite.
 - T-03-TOK: tokens/passwords stored in .env (gitignored), shown as placeholders in
   .env.example; never hardcoded or logged.
 """
@@ -24,6 +33,7 @@ import os
 from src.interfaces.notification_channel import NotificationChannel
 from src.notifications.email_channel import EmailNotificationChannel
 from src.notifications.log_channel import LogNotificationChannel
+from src.notifications.multi_channel import MultiNotificationChannel
 from src.notifications.sms_channel import SMSNotificationChannel
 from src.notifications.telegram_channel import TelegramNotificationChannel
 
@@ -38,8 +48,8 @@ def create_channel(name: str | None, tenant) -> NotificationChannel:
     Args:
         name:   Channel name string: ``"log"``, ``"telegram"``, ``"email"``,
                 ``"sms"``, ``"whatsapp"``, or ``None``.
-                ``None`` or any unknown value falls back to ``LogNotificationChannel``
-                (D-11 default).
+                ``None`` / ``"log"`` / unknown → demo-default branch (D-11):
+                multi-send if Telegram env vars present; log-only otherwise.
         tenant: TenantConfig instance (used for future per-tenant credential
                 overrides; currently only ``name`` is used for dispatch).
 
@@ -66,5 +76,18 @@ def create_channel(name: str | None, tenant) -> NotificationChannel:
     if normalized in ("sms", "whatsapp"):
         return SMSNotificationChannel()
 
-    # Default / fallback: "log" or any unknown/None name → LogNotificationChannel (D-11)
+    # Demo-default branch: "log" / unknown / None (D-11 multi-send)
+    # Both Telegram env vars must be present (non-empty) for the telegram leg to be added.
+    # T-03-NINJ: destinations come ONLY from env — never from caller or transcript.
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if token and chat_id:
+        return MultiNotificationChannel(
+            [
+                LogNotificationChannel(),
+                TelegramNotificationChannel(token=token, chat_id=chat_id),
+            ]
+        )
+
+    # Fallback: no Telegram vars → log only
     return LogNotificationChannel()
