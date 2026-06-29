@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 Phase: 03 (handoff-summary-notifications) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-06-29
+Last activity: 2026-06-29 - Completed quick task 260629-tkr: fix outcome-determination bug (confirmed booking no longer buried by watchdog 'fallito')
 
 Progress: [██████████] 100%
 
@@ -137,6 +137,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260626-sax | Fix booking flow: anno data 2025 + numeri telefono alieni nel readback | 2026-06-26 | (see log) | [260626-sax-fix-booking-flow-anno-data-2025-numeri-t](./quick/260626-sax-fix-booking-flow-anno-data-2025-numeri-t/) |
+| 260629-tkr | Fix outcome-determination bug: confirmed booking wrongly reported as fallito | 2026-06-29 | 4f7504e | [260629-tkr-fix-outcome-determination-bug-confirmed-](./quick/260629-tkr-fix-outcome-determination-bug-confirmed-/) |
 
 ## Deferred Items
 
