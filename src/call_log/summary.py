@@ -22,12 +22,15 @@ from src.config.tenant_config import TenantConfig
 def _determine_outcome(state: dict) -> str:
     """Derive the D-06 outcome taxonomy value from the flow manager's state dict.
 
-    Priority (Pattern 5, RESEARCH.md):
-    1. explicit state['outcome']   — set by transfer handler (03-01) or fallback observer
-    2. confirmed_event_id present  → 'prenotato'
-    3. faq_answered truthy         → 'faq'
-    4. booking_slot without event  → 'abbandonato' (D-18 bozza behavior)
-    5. default                     → 'faq' (no booking attempted)
+    Priority (Pattern 5, RESEARCH.md — corrected 260629-tkr):
+    1. state['outcome'] == 'trasferito'  — deliberate operator handoff always surfaces
+    2. confirmed_event_id present        → 'prenotato'
+       (a confirmed Google Calendar event must NEVER be downgraded to 'fallito' or
+       'abbandonato' by a later dead-air watchdog or error observer — 260629-tkr bug)
+    3. any other explicit state['outcome'] — e.g. 'fallito' when no booking confirmed
+    4. faq_answered truthy               → 'faq'
+    5. booking_slot without event        → 'abbandonato' (D-18 bozza behavior)
+    6. default                           → 'faq' (no booking attempted)
 
     Args:
         state: flow_manager.state dict (or any equivalent dict of flow state).
@@ -35,24 +38,33 @@ def _determine_outcome(state: dict) -> str:
     Returns:
         One of: 'prenotato', 'faq', 'trasferito', 'abbandonato', 'fallito'.
     """
-    # Rule 1: explicit override wins (e.g. 'trasferito' set by handle_transfer_call in 03-01,
-    # 'fallito' set by ErrorFallbackObserver escalation)
-    if state.get("outcome"):
-        return state["outcome"]
+    # Rule 1: deliberate human handoff surfaces to the owner even over a confirmed booking.
+    # 'trasferito' is set by handle_transfer_call (03-01); it must never be silenced.
+    if state.get("outcome") == "trasferito":
+        return "trasferito"
 
-    # Rule 2: booking was completed and a Google Calendar event was created
+    # Rule 2: booking was completed and a Google Calendar event was created.
+    # This check precedes the generic explicit-outcome check (Rule 3) to prevent a
+    # background watchdog (e.g. dead-air T2) or error observer from setting
+    # state['outcome'] = 'fallito'/'abbandonato' and burying a confirmed booking
+    # (260629-tkr root cause: call_logs id=2 had outcome='fallito' but google_event_id set).
     if state.get("confirmed_event_id"):
         return "prenotato"
 
-    # Rule 3: caller's question was answered via FAQ
+    # Rule 3: any other explicit override (e.g. 'fallito' set by ErrorFallbackObserver
+    # escalation when no booking was confirmed; outcome='abbandonato' from early timeout).
+    if state.get("outcome"):
+        return state["outcome"]
+
+    # Rule 4: caller's question was answered via FAQ
     if state.get("faq_answered"):
         return "faq"
 
-    # Rule 4: booking was started (slot chosen) but not confirmed — call ended mid-booking
+    # Rule 5: booking was started (slot chosen) but not confirmed — call ended mid-booking
     if state.get("booking_slot") and not state.get("confirmed_event_id"):
         return "abbandonato"
 
-    # Rule 5: default — call ended without booking attempt
+    # Rule 6: default — call ended without booking attempt
     return "faq"
 
 
