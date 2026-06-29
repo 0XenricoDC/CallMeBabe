@@ -1,12 +1,19 @@
-"""Tests for ErrorFallbackObserver escalation (REL-02 / Plan 03-04).
+"""Tests for ErrorFallbackObserver escalation (REL-02 / Plans 03-04, 03-06).
 
 SC4: persistent failure -> courtesy + transfer, outcome fallito, no dead-air.
 
 Extends the existing REL-01 retry-slot tests (in test_observers.py) with
 escalation-threshold coverage.
 
-RED state: _ESCALATION_THRESHOLD and escalation logic do not exist yet (Task 1).
-Turns GREEN in Task 2.
+Plan 03-04 RED state: _ESCALATION_THRESHOLD and escalation logic do not exist yet (Task 1).
+Plan 03-04 GREEN: turned GREEN in Task 2.
+
+Plan 03-06 addition: shared escalation guard
+  test_shared_escalation_guard_prevents_double_endworkerframe verifies that when
+  flow_manager.state['_stt_escalated'] is True (set by stt_switcher's on_service_switched
+  escalation), ErrorFallbackObserver does NOT queue an additional EndWorkerFrame.
+  RED: current fallback.py uses self._escalated (local flag only), ignores shared key.
+  GREEN: fallback.py checks flow_manager.state.get('_stt_escalated', False).
 """
 
 from __future__ import annotations
@@ -152,4 +159,53 @@ def test_escalation_observer_has_flow_manager_attribute():
     )
     assert observer.flow_manager is None, (
         "flow_manager must default to None (patched post-construction, like .worker)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan 03-06 / Task 1 (RED): shared escalation guard between switcher + observer
+# ---------------------------------------------------------------------------
+
+def test_shared_escalation_guard_prevents_double_endworkerframe():
+    """Shared guard: observer must NOT fire EndWorkerFrame when switcher already escalated.
+
+    When stt_switcher's on_service_switched handler escalates (SC4), it sets
+    flow_manager.state['_stt_escalated'] = True. If ErrorFallbackObserver subsequently
+    also reaches its threshold, it must check this shared key and skip its own
+    EndWorkerFrame — so the call ends cleanly with exactly ONE EndWorkerFrame total.
+
+    Security (V7/T-03-LOG): all phrases are static; no ErrorFrame.error content is used.
+
+    RED: fallback.py uses self._escalated (local, starts False) and ignores
+         flow_manager.state['_stt_escalated'], so it fires EndWorkerFrame regardless.
+    GREEN: fallback.py checks flow_manager.state.get('_stt_escalated', False) before
+           queuing EndWorkerFrame — skips it when the shared key is True.
+    """
+    from pipecat.frames.frames import EndWorkerFrame, ErrorFrame
+
+    from src.pipeline.fallback import _ESCALATION_THRESHOLD, ErrorFallbackObserver
+
+    spy = _SpyWorker()
+    # Simulate that stt_switcher already escalated by pre-setting the shared guard key.
+    fake_fm = type("_FM", (), {"state": {"_stt_escalated": True}})()
+
+    observer = ErrorFallbackObserver(worker=spy)
+    observer.flow_manager = fake_fm
+
+    err_frame = ErrorFrame(error="STT failure", fatal=False)
+    push = _FakeFramePushed(source=_FakeProcessor("deepgram-stt"), frame=err_frame)
+
+    async def _run():
+        # Drive enough errors to reach the observer's own escalation threshold
+        for _ in range(_ESCALATION_THRESHOLD * 2):
+            await observer.on_push_frame(push)
+
+    asyncio.run(_run())
+
+    # Observer must NOT queue EndWorkerFrame — switcher already escalated via shared key.
+    end_frames = [f for f in spy.queued if isinstance(f, EndWorkerFrame)]
+    assert len(end_frames) == 0, (
+        "Shared guard: ErrorFallbackObserver must not queue an EndWorkerFrame when "
+        "flow_manager.state['_stt_escalated'] is already True (SC4 idempotency across "
+        f"both escalation mechanisms). Got {len(end_frames)} EndWorkerFrame(s)."
     )

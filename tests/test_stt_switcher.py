@@ -1,13 +1,22 @@
-"""Tests for STT ServiceSwitcher + LazyWhisperSTTService (REL-03 / Plan 03-04).
+"""Tests for STT ServiceSwitcher + LazyWhisperSTTService (REL-03 / Plans 03-04, 03-06).
 
-Task 1 coverage:
+Plan 03-04 coverage:
 - LazyWhisperSTTService: _model is None after construction (no eager load).
 - build_stt_switcher(): returns a ServiceSwitcher with two services and a failover strategy.
+
+Plan 03-06 coverage (gap closure SC3/SC4):
+- FailoverDeepgramSTTService: subclass of DeepgramSTTService with connection-health monitor.
+- Health monitor calls push_error when _connection_ready is persistently not set.
+- Real-error-path failover: ErrorFrame from active service triggers switch + courtesy phrase.
+- LazyWhisperSTTService.run_stt yields ErrorFrame (not raises) on model-load failure.
+- SC4 escalation: repeated on_service_switched → outcome='fallito' + single EndWorkerFrame.
+- SC4 idempotency: second batch of switches queues no further EndWorkerFrame.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -138,4 +147,357 @@ def test_build_stt_switcher_deepgram_api_key_from_env():
     assert "api_key" in captured_deepgram_kwargs, "DeepgramSTTService must receive api_key kwarg."
     assert captured_deepgram_kwargs["api_key"] == "test-dg-key", (
         "api_key must come from os.getenv (not hardcoded)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helper: spy worker (mirrors _SpyWorker in test_fallback.py)
+# ---------------------------------------------------------------------------
+
+class _SpyWorker:
+    """Captures frames queued via queue_frames() or queue_frame()."""
+
+    def __init__(self):
+        self.queued: list = []
+
+    async def queue_frames(self, frames):
+        self.queued.extend(frames)
+
+    async def queue_frame(self, frame):
+        self.queued.append(frame)
+
+
+# ---------------------------------------------------------------------------
+# Plan 03-06 / Task 1 (RED): FailoverDeepgramSTTService class checks
+# ---------------------------------------------------------------------------
+
+def test_failover_deepgram_stt_service_class_exists():
+    """FailoverDeepgramSTTService must exist and be a DeepgramSTTService subclass (SC3/SC4).
+
+    RED: ImportError — class does not exist yet.
+    GREEN: class added in stt_switcher.py.
+    """
+    from pipecat.services.deepgram.stt import DeepgramSTTService
+    from src.pipeline.stt_switcher import FailoverDeepgramSTTService  # RED: ImportError
+    assert issubclass(FailoverDeepgramSTTService, DeepgramSTTService), (
+        "FailoverDeepgramSTTService must subclass DeepgramSTTService (REL-03)."
+    )
+
+
+def test_stt_health_monitor_constants_exist():
+    """_STT_HEALTH_GRACE and _STT_ERROR_INTERVAL must be importable module constants.
+
+    Required for test monkeypatching and for the health-monitor loop (SC3/D-12).
+    RED: AttributeError — constants do not exist yet.
+    GREEN: constants added to stt_switcher.py with positive values.
+    """
+    import src.pipeline.stt_switcher as mod
+    assert hasattr(mod, "_STT_HEALTH_GRACE"), (
+        "_STT_HEALTH_GRACE constant missing from stt_switcher (needed for health monitor grace period)."
+    )
+    assert hasattr(mod, "_STT_ERROR_INTERVAL"), (
+        "_STT_ERROR_INTERVAL constant missing from stt_switcher (needed for health monitor interval)."
+    )
+    assert mod._STT_HEALTH_GRACE > 0, "_STT_HEALTH_GRACE must be a positive number."
+    assert mod._STT_ERROR_INTERVAL > 0, "_STT_ERROR_INTERVAL must be a positive number."
+
+
+def test_failover_monitor_calls_push_error_when_connection_not_ready():
+    """Health monitor: push_error called when _connection_ready stays unset past grace.
+
+    When Deepgram fails to connect (e.g. 401 invalid key), _connection_ready is never set.
+    The health-monitor task must detect this and call push_error so the ServiceSwitcher
+    can fail over to faster-whisper (SC3 real-error path).
+
+    Security (T-02-KEY/V7/T-03-LOG): the error message is static — no key, no raw exception.
+
+    RED: ImportError on FailoverDeepgramSTTService.
+    GREEN: _failover_monitor() coroutine calls push_error within grace+interval seconds.
+    """
+    from src.pipeline.stt_switcher import FailoverDeepgramSTTService  # RED: ImportError
+    import src.pipeline.stt_switcher as mod
+
+    # Create a bare instance without running __init__ so no network calls are made.
+    svc = object.__new__(FailoverDeepgramSTTService)
+    svc._connection_ready = asyncio.Event()  # intentionally NOT set (simulates 401 case)
+    push_error_spy = AsyncMock()
+    svc.push_error = push_error_spy
+
+    async def _run():
+        # Monkeypatch constants to tiny values so test runs in < 0.2s
+        with patch.object(mod, "_STT_HEALTH_GRACE", 0.01), \
+             patch.object(mod, "_STT_ERROR_INTERVAL", 0.01):
+            task = asyncio.create_task(svc._failover_monitor())
+            await asyncio.sleep(0.08)  # wait for grace + several intervals
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_run())
+    push_error_spy.assert_called(), (
+        "_failover_monitor must call push_error when _connection_ready is not set (SC3 real path)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan 03-06 / Task 1 (RED): build_stt_switcher uses FailoverDeepgramSTTService
+# ---------------------------------------------------------------------------
+
+def test_build_stt_switcher_uses_failover_deepgram_stt_service():
+    """build_stt_switcher must use FailoverDeepgramSTTService as the primary STT (SC3/SC4).
+
+    RED: AttributeError — patching FailoverDeepgramSTTService fails (not in module yet).
+    GREEN: build_stt_switcher constructs FailoverDeepgramSTTService (not plain DeepgramSTTService).
+    """
+    from pipecat.pipeline.service_switcher import ServiceSwitcher
+    from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
+
+    holder = WorkerRefHolder()
+
+    # In RED: patch raises AttributeError because FailoverDeepgramSTTService doesn't exist.
+    with patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockFDSS, \
+         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockLWSS:
+        fake_deepgram = MagicMock(name="FailoverDeepgramSTT")
+        fake_deepgram.queue_frame = AsyncMock()
+        fake_whisper = MagicMock(name="LazyWhisperSTT")
+        fake_whisper.queue_frame = AsyncMock()
+        MockFDSS.return_value = fake_deepgram
+        MockLWSS.return_value = fake_whisper
+
+        switcher = build_stt_switcher(holder)
+
+    assert MockFDSS.called, (
+        "build_stt_switcher must construct FailoverDeepgramSTTService (SC3/SC4 — not plain DeepgramSTTService)."
+    )
+    assert isinstance(switcher, ServiceSwitcher)
+
+
+def test_real_errorframe_path_triggers_failover_and_courtesy_phrase():
+    """SC3: ErrorFrame from active service (real error path) → switch + courtesy phrase.
+
+    This exercises the real ServiceSwitcher.push_frame → strategy.handle_error path
+    (not a simulated switch). Replaces the prior simulated-switch-only coverage.
+
+    RED: AttributeError — patching FailoverDeepgramSTTService fails.
+    GREEN: strategy.handle_error fires on_service_switched; handler queues courtesy phrase.
+    """
+    from pipecat.frames.frames import ErrorFrame, TTSSpeakFrame
+    from src.pipeline.stt_switcher import WorkerRefHolder, _SWITCH_COURTESY_PHRASE, build_stt_switcher
+
+    holder = WorkerRefHolder()
+    spy = _SpyWorker()
+    holder.worker = spy
+
+    # In RED: patch raises AttributeError.
+    with patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockFDSS, \
+         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockLWSS:
+        fake_deepgram = MagicMock(name="fake_deepgram")
+        fake_deepgram.name = "FailoverDeepgramSTT"
+        fake_deepgram.queue_frame = AsyncMock()
+        fake_whisper = MagicMock(name="fake_whisper")
+        fake_whisper.name = "LazyWhisperSTT"
+        fake_whisper.queue_frame = AsyncMock()
+        MockFDSS.return_value = fake_deepgram
+        MockLWSS.return_value = fake_whisper
+
+        stt_switcher = build_stt_switcher(holder)
+
+    strategy = stt_switcher.strategy
+    active = strategy.active_service  # fake_deepgram
+
+    # Feed a non-fatal error from the ACTIVE service — the REAL error path the switcher uses.
+    err = ErrorFrame(error="401 auth failed", fatal=False)
+    err.processor = active
+
+    async def _run():
+        await strategy.handle_error(err)
+
+    asyncio.run(_run())
+
+    # Active service must have switched to whisper
+    assert strategy.active_service is not active, (
+        "ServiceSwitcher must switch active service on non-fatal ErrorFrame from active service (SC3)."
+    )
+    # Courtesy phrase must have been queued (SC3)
+    tts_frames = [f for f in spy.queued if isinstance(f, TTSSpeakFrame)]
+    assert len(tts_frames) >= 1, (
+        "on_service_switched handler must queue a courtesy TTSSpeakFrame (SC3)."
+    )
+    assert any(_SWITCH_COURTESY_PHRASE in f.text for f in tts_frames), (
+        f"Courtesy phrase must contain '{_SWITCH_COURTESY_PHRASE}'."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan 03-06 / Task 1 (RED): LazyWhisperSTTService.run_stt error yield
+# ---------------------------------------------------------------------------
+
+def test_lazy_whisper_run_stt_yields_error_frame_on_load_failure():
+    """run_stt must yield a non-fatal ErrorFrame (not raise) when WhisperModel fails to load.
+
+    process_generator (ai_service.py) pushes YIELDED ErrorFrames via push_error_frame but
+    does NOT catch a RAISED exception. If run_stt raises, the error never reaches the
+    ServiceSwitcher and SC4 never fires. Yielding ErrorFrame makes the failure symmetric
+    with the Deepgram path.
+
+    Security (V7/T-03-LOG): ErrorFrame.error is a static sanitized string — no exception detail.
+
+    RED: run_stt currently lets asyncio.to_thread failure propagate as a raised exception.
+    GREEN: run_stt catches the exception and yields ErrorFrame(error=..., fatal=False).
+    """
+    from pipecat.frames.frames import ErrorFrame
+    from pipecat.services.whisper.stt import Model
+    from pipecat.transcriptions.language import Language
+    from src.pipeline.stt_switcher import LazyWhisperSTTService
+
+    # Create the service normally (patching WhisperModel so _load() no-op doesn't try to import)
+    with patch("faster_whisper.WhisperModel"):
+        svc = LazyWhisperSTTService(
+            device="cpu",
+            compute_type="int8",
+            settings=LazyWhisperSTTService.Settings(
+                model=Model.LARGE_V3_TURBO,
+                language=Language.IT,
+                no_speech_prob=0.4,
+            ),
+        )
+    svc._model = None  # ensure lazy state (should already be None from _load no-op)
+
+    async def _run():
+        frames = []
+        # Patch asyncio.to_thread to simulate a model-load failure
+        with patch("asyncio.to_thread", side_effect=RuntimeError("model load failed")):
+            async for f in svc.run_stt(b"\x00" * 100):
+                if f is not None:
+                    frames.append(f)
+        return frames
+
+    # RED: asyncio.run() raises RuntimeError because run_stt propagates the exception.
+    # GREEN: asyncio.run() returns [ErrorFrame(...)].
+    frames = asyncio.run(_run())
+
+    error_frames = [f for f in frames if isinstance(f, ErrorFrame)]
+    assert len(error_frames) >= 1, (
+        "run_stt must yield at least one ErrorFrame when WhisperModel fails to load "
+        "(not raise an exception out of the generator) — SC4 symmetric error surfacing."
+    )
+    assert all(not f.fatal for f in error_frames), (
+        "Yielded ErrorFrame must be non-fatal so ServiceSwitcher can handle it."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan 03-06 / Task 1 (RED): SC4 escalation via repeated on_service_switched
+# ---------------------------------------------------------------------------
+
+def test_sc4_escalation_fires_on_repeated_failover():
+    """SC4: after _ESCALATION_THRESHOLD on_service_switched events, escalate exactly once.
+
+    When all STT services are flapping/dead (repeated failover), the on_service_switched
+    handler must escalate: set flow_manager.state['outcome']='fallito' and queue exactly
+    one EndWorkerFrame. The call must not have prolonged dead-air.
+
+    RED: AttributeError — patching FailoverDeepgramSTTService fails;
+         AND even if test ran, the current on_service_switched has no escalation logic.
+    GREEN: escalation fires after _ESCALATION_THRESHOLD switches.
+    """
+    from pipecat.frames.frames import EndWorkerFrame, ErrorFrame
+    from src.pipeline.fallback import _ESCALATION_THRESHOLD
+    from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
+
+    holder = WorkerRefHolder()
+    spy = _SpyWorker()
+    holder.worker = spy
+    fake_fm = type("_FM", (), {"state": {}})()
+    holder.flow_manager = fake_fm  # patched after FlowManager creation (bot.py pattern)
+
+    # In RED: patch raises AttributeError.
+    with patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockFDSS, \
+         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockLWSS:
+        fake_deepgram = MagicMock(name="fake_deepgram")
+        fake_deepgram.name = "FailoverDeepgramSTT"
+        fake_deepgram.queue_frame = AsyncMock()
+        fake_whisper = MagicMock(name="fake_whisper")
+        fake_whisper.name = "LazyWhisperSTT"
+        fake_whisper.queue_frame = AsyncMock()
+        MockFDSS.return_value = fake_deepgram
+        MockLWSS.return_value = fake_whisper
+
+        stt_switcher = build_stt_switcher(holder)
+
+    strategy = stt_switcher.strategy
+
+    async def _run():
+        # Drive _ESCALATION_THRESHOLD on_service_switched events via real handle_error.
+        # Each call feeds the error from the *currently active* service, so the switcher
+        # always has a valid reason to switch (round-robins between fake_deepgram/fake_whisper).
+        for _ in range(_ESCALATION_THRESHOLD):
+            active = strategy.active_service
+            err = ErrorFrame(error="persistent failure", fatal=False)
+            err.processor = active
+            await strategy.handle_error(err)
+
+    asyncio.run(_run())
+
+    assert fake_fm.state.get("outcome") == "fallito", (
+        f"After {_ESCALATION_THRESHOLD} failover switches, "
+        "on_service_switched handler must set outcome='fallito' (SC4)."
+    )
+    end_frames = [f for f in spy.queued if isinstance(f, EndWorkerFrame)]
+    assert len(end_frames) == 1, (
+        f"Escalation must queue exactly one EndWorkerFrame (SC4 no dead-air); "
+        f"got {len(end_frames)}."
+    )
+
+
+def test_sc4_escalation_idempotent_via_shared_guard():
+    """SC4: a second batch of failover switches queues no further EndWorkerFrame.
+
+    After the first escalation, the shared guard (flow_manager.state['_stt_escalated'])
+    prevents additional EndWorkerFrames from being queued — even with more switches.
+
+    RED: AttributeError — patching FailoverDeepgramSTTService fails.
+    GREEN: shared guard set on first escalation; subsequent switches don't re-fire.
+    """
+    from pipecat.frames.frames import EndWorkerFrame, ErrorFrame
+    from src.pipeline.fallback import _ESCALATION_THRESHOLD
+    from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
+
+    holder = WorkerRefHolder()
+    spy = _SpyWorker()
+    holder.worker = spy
+    fake_fm = type("_FM", (), {"state": {}})()
+    holder.flow_manager = fake_fm
+
+    with patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockFDSS, \
+         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockLWSS:
+        fake_deepgram = MagicMock(name="fake_deepgram")
+        fake_deepgram.name = "FailoverDeepgramSTT"
+        fake_deepgram.queue_frame = AsyncMock()
+        fake_whisper = MagicMock(name="fake_whisper")
+        fake_whisper.name = "LazyWhisperSTT"
+        fake_whisper.queue_frame = AsyncMock()
+        MockFDSS.return_value = fake_deepgram
+        MockLWSS.return_value = fake_whisper
+
+        stt_switcher = build_stt_switcher(holder)
+
+    strategy = stt_switcher.strategy
+
+    async def _run():
+        # 2× threshold — escalation should still fire exactly once
+        for _ in range(_ESCALATION_THRESHOLD * 2):
+            active = strategy.active_service
+            err = ErrorFrame(error="persistent failure", fatal=False)
+            err.processor = active
+            await strategy.handle_error(err)
+
+    asyncio.run(_run())
+
+    end_frames = [f for f in spy.queued if isinstance(f, EndWorkerFrame)]
+    assert len(end_frames) == 1, (
+        f"SC4 escalation must be idempotent — exactly one EndWorkerFrame after "
+        f"{_ESCALATION_THRESHOLD * 2} switches; got {len(end_frames)}."
     )
