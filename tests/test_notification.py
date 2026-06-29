@@ -145,14 +145,18 @@ async def test_channels_are_notification_channel_subclasses() -> None:
 
 
 async def test_factory_log_channel() -> None:
-    """create_channel('log', tenant) returns LogNotificationChannel."""
-    from src.notifications.factory import create_channel  # RED: factory absent
+    """create_channel('log', tenant) returns LogNotificationChannel when no Telegram vars."""
+    import os
+
+    from src.notifications.factory import create_channel
     from src.notifications.log_channel import LogNotificationChannel
 
     tenant = MagicMock()
     tenant.notification_channel = "log"
 
-    ch = create_channel("log", tenant)
+    # Explicitly clear Telegram vars so the demo-default returns log only
+    with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}, clear=False):
+        ch = create_channel("log", tenant)
     assert isinstance(ch, LogNotificationChannel)
 
 
@@ -186,12 +190,181 @@ async def test_factory_unknown_falls_back_to_log() -> None:
 
 
 async def test_factory_none_falls_back_to_log() -> None:
-    """create_channel(None, tenant) falls back to LogNotificationChannel (D-11)."""
-    from src.notifications.factory import create_channel  # RED: factory absent
+    """create_channel(None, tenant) falls back to LogNotificationChannel (D-11) when no Telegram vars."""
+    import os
+
+    from src.notifications.factory import create_channel
     from src.notifications.log_channel import LogNotificationChannel
 
     tenant = MagicMock()
     tenant.notification_channel = None
 
-    ch = create_channel(None, tenant)
+    # Explicitly clear Telegram vars so the demo-default returns log only (D-11 fallback)
+    with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}, clear=False):
+        ch = create_channel(None, tenant)
     assert isinstance(ch, LogNotificationChannel)
+
+
+# ---------------------------------------------------------------------------
+# 03-05 — MultiNotificationChannel + factory demo-default multi-send (D-11)
+# RED tests: fail until src/notifications/multi_channel.py is created (Task 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_multi_channel_is_notification_channel_subclass() -> None:
+    """MultiNotificationChannel is a NotificationChannel subclass (RED — module missing)."""
+    from src.interfaces.notification_channel import NotificationChannel
+    from src.notifications.multi_channel import MultiNotificationChannel  # RED: ImportError
+
+    assert issubclass(MultiNotificationChannel, NotificationChannel)
+
+
+async def test_multi_channel_send_delivers_to_all_wrapped_channels() -> None:
+    """MultiNotificationChannel.send() delivers to every wrapped channel with the same args."""
+    from src.notifications.multi_channel import MultiNotificationChannel  # RED: ImportError
+
+    received_a: list[tuple[str, str]] = []
+    received_b: list[tuple[str, str]] = []
+
+    class SpyA:
+        async def send(self, subject: str, body: str) -> None:
+            received_a.append((subject, body))
+
+    class SpyB:
+        async def send(self, subject: str, body: str) -> None:
+            received_b.append((subject, body))
+
+    multi = MultiNotificationChannel([SpyA(), SpyB()])
+    await multi.send(subject="Soggetto", body="Corpo di prova.")
+
+    assert received_a == [("Soggetto", "Corpo di prova.")]
+    assert received_b == [("Soggetto", "Corpo di prova.")]
+
+
+async def test_multi_channel_isolates_per_channel_failures() -> None:
+    """MultiNotificationChannel: failure in one channel does not prevent others receiving."""
+    from src.notifications.multi_channel import MultiNotificationChannel  # RED: ImportError
+
+    received_b: list[tuple[str, str]] = []
+
+    class BrokenChannel:
+        async def send(self, subject: str, body: str) -> None:
+            raise RuntimeError("canale rotto")
+
+    class SpyB:
+        async def send(self, subject: str, body: str) -> None:
+            received_b.append((subject, body))
+
+    multi = MultiNotificationChannel([BrokenChannel(), SpyB()])
+    # Must NOT raise — per-channel failure isolation (T-03-FIN)
+    await multi.send(subject="Soggetto", body="Corpo.")
+
+    assert received_b == [("Soggetto", "Corpo.")]
+
+
+async def test_factory_none_both_telegram_vars_returns_multi_log_plus_telegram() -> None:
+    """create_channel(None, tenant) with TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID → MultiNotificationChannel(log+telegram)."""
+    import os
+
+    from src.notifications.factory import create_channel
+    from src.notifications.log_channel import LogNotificationChannel
+    from src.notifications.multi_channel import MultiNotificationChannel  # RED: ImportError
+    from src.notifications.telegram_channel import TelegramNotificationChannel
+
+    tenant = MagicMock()
+    tenant.notification_channel = None
+
+    with patch.dict(
+        os.environ,
+        {"TELEGRAM_BOT_TOKEN": "demo-token", "TELEGRAM_CHAT_ID": "12345"},
+        clear=False,
+    ):
+        ch = create_channel(None, tenant)
+
+    assert isinstance(ch, MultiNotificationChannel)
+    channel_types = {type(c) for c in ch.channels}
+    assert LogNotificationChannel in channel_types
+    assert TelegramNotificationChannel in channel_types
+
+
+async def test_factory_log_both_telegram_vars_returns_multi() -> None:
+    """create_channel('log', tenant) with both Telegram env vars → MultiNotificationChannel(log+telegram)."""
+    import os
+
+    from src.notifications.factory import create_channel
+    from src.notifications.log_channel import LogNotificationChannel
+    from src.notifications.multi_channel import MultiNotificationChannel  # RED: ImportError
+    from src.notifications.telegram_channel import TelegramNotificationChannel
+
+    tenant = MagicMock()
+    tenant.notification_channel = "log"
+
+    with patch.dict(
+        os.environ,
+        {"TELEGRAM_BOT_TOKEN": "demo-token", "TELEGRAM_CHAT_ID": "12345"},
+        clear=False,
+    ):
+        ch = create_channel("log", tenant)
+
+    assert isinstance(ch, MultiNotificationChannel)
+    channel_types = {type(c) for c in ch.channels}
+    assert LogNotificationChannel in channel_types
+    assert TelegramNotificationChannel in channel_types
+
+
+async def test_factory_none_no_telegram_token_returns_log_only() -> None:
+    """create_channel(None, tenant) without TELEGRAM_BOT_TOKEN → plain LogNotificationChannel."""
+    import os
+
+    from src.notifications.factory import create_channel
+    from src.notifications.log_channel import LogNotificationChannel
+
+    tenant = MagicMock()
+    tenant.notification_channel = None
+
+    with patch.dict(
+        os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}, clear=False
+    ):
+        ch = create_channel(None, tenant)
+
+    assert type(ch) is LogNotificationChannel
+
+
+async def test_factory_none_token_present_but_no_chat_id_returns_log_only() -> None:
+    """create_channel(None, tenant) with token but missing TELEGRAM_CHAT_ID → log only (T-03-NINJ)."""
+    import os
+
+    from src.notifications.factory import create_channel
+    from src.notifications.log_channel import LogNotificationChannel
+
+    tenant = MagicMock()
+    tenant.notification_channel = None
+
+    with patch.dict(
+        os.environ,
+        {"TELEGRAM_BOT_TOKEN": "some-token", "TELEGRAM_CHAT_ID": ""},
+        clear=False,
+    ):
+        ch = create_channel(None, tenant)
+
+    assert type(ch) is LogNotificationChannel
+
+
+async def test_factory_explicit_telegram_remains_single_channel() -> None:
+    """create_channel('telegram', tenant) → single TelegramNotificationChannel (explicit selection, not multi-send)."""
+    import os
+
+    from src.notifications.factory import create_channel
+    from src.notifications.telegram_channel import TelegramNotificationChannel
+
+    tenant = MagicMock()
+    tenant.notification_channel = "telegram"
+
+    with patch.dict(
+        os.environ,
+        {"TELEGRAM_BOT_TOKEN": "tok", "TELEGRAM_CHAT_ID": "999"},
+        clear=False,
+    ):
+        ch = create_channel("telegram", tenant)
+
+    assert type(ch) is TelegramNotificationChannel
