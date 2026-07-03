@@ -3,7 +3,7 @@
 Guida operativa rapida: come avviare, provare e testare il bot.
 **Questo file viene aggiornato man mano che il progetto avanza.**
 
-> Ultimo aggiornamento: 2026-06-25 — Fase 1 COMPLETA (tutti e 3 i piani verificati live). In attesa di verifica di fase.
+> Ultimo aggiornamento: 2026-07-04 — Fasi 1–3 complete a livello di codice (136 test verdi + 1 skip). Roadmap riorganizzata **pilot-first** (obiettivo: primo cliente pilota ristorante — vedi CLAUDE.md → Priorità corrente). Prossimo passo: sessione di verifica live Fase 3 (checklist SC1–SC5 qui sotto), poi telefonia Telnyx.
 
 ---
 
@@ -73,7 +73,9 @@ Se cambi le chiavi, riavvia il bot (le legge all'avvio).
 
 ---
 
-## 🧪 Cosa verificare nel test live (Fase 1)
+## 🧪 Test live
+
+### Base (Fase 1 — già verificata, utile come smoke test)
 
 Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 
@@ -81,6 +83,22 @@ Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 2. ✅ Gli parli in italiano → ti risponde come receptionist (VOICE-01)
 3. ✅ Lo interrompi mentre parla → si ferma e ascolta (**barge-in**, VOICE-03)
 4. ✅ La voce è quella italiana configurata (VOICE-05)
+
+### ⏳ Verifica Fase 3 — SC1–SC5 (DA FARE, sessione unica ~30-45 min)
+
+Prerequisiti: bot avviato con `.venv/Scripts/python main.py --tenant=demo`, client su `http://localhost:7860/prebuilt/`. Gli scenari SC3/SC4 richiedono riavvii con `.env`/codice modificati temporaneamente.
+
+1. **SC1 — Trasferimento operatore** (3 varianti, una chiamata ciascuna):
+   (a) chiedi subito "mi passi una persona?"; (b) chiedilo a metà prenotazione; (c) parla in inglese.
+   Atteso: il bot annuncia il trasferimento e chiude la chiamata; nel log il numero viene dalla config del tenant.
+2. **SC2 — Notifica di fine chiamata**: completa una prenotazione e chiudi → riga `[CALL LOG]` in console (+ messaggio Telegram se `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` in `.env`) con esito `prenotato`. Ripeti abbandonando a metà → esito `abbandonato`.
+3. **SC3 — Failover STT sulla stessa chiamata**: in `.env` metti `DEEPGRAM_API_KEY=invalid`, riavvia, connettiti e parla.
+   Atteso: frase di cortesia *"Un momento, sto risolvendo un problema tecnico…"* e la **stessa chiamata** continua su faster-whisper (primo turno lento 10-20s: carica il modello sul CPU). La chiamata NON deve cadere.
+4. **SC4 — Doppio guasto → trasferimento**: chiave ancora invalida **e** whisper forzato a fallire: in `src/pipeline/stt_switcher.py` cambia temporaneamente `device="cpu"` → `device="cuda"` (riga ~320, macchina senza GPU). Riavvia, parla.
+   Atteso: dopo qualche ciclo *"Mi scusi, sto riscontrando problemi tecnici. La trasferisco a un operatore."*, chiusura pulita, riga in `call_logs` con `outcome='fallito'`, nessun silenzio prolungato.
+5. **SC5 — Watchdog dead-air**: chiamata normale (chiavi valide), resta in silenzio ~6s → il bot ti sollecita; resta zitto altri ~8s → parte la sequenza di recupero/chiusura.
+
+⚠️ **Al termine ripristina**: `DEEPGRAM_API_KEY` corretta in `.env` e `device="cpu"` in `stt_switcher.py`, poi riavvia e fai un giro di smoke test base.
 
 ---
 
@@ -98,23 +116,28 @@ Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 
 ## 📍 Stato avanzamento
 
-**Milestone v1.0 — 5 fasi**
+> Roadmap riorganizzata **pilot-first** il 2026-07-03: l'obiettivo non è completare la roadmap originale ma installare il bot dal **primo cliente pilota (ristorante)**. Le 5 fasi originali restano documentate in `.planning/ROADMAP.md` (storico GSD); questo file è la verità operativa.
+
+**Fasi originali (v1.0):**
 
 | Fase | Nome | Stato |
 |------|------|-------|
-| 1 | Local Voice Loop (bot vocale locale) | ✅ Completa (in verifica) |
-| 2 | Booking / Calendar | ○ Da fare |
-| 3 | Notifiche / riepilogo fine chiamata | ○ Da fare |
-| 4 | Telefonia Telnyx | ○ Da fare |
-| 5 | Multi-tenant | ○ Da fare |
+| 1 | Local Voice Loop (bot vocale locale) | ✅ Completa (verificata live) |
+| 2 | Booking / Calendar / FAQ | ✅ Completa |
+| 3 | Trasferimento / riepilogo / notifiche / failover STT | ✅ Codice completo — verifiche live SC1–SC5 da fare (checklist sopra) |
+| 4 | Telefonia Telnyx | ○ Prossima (scope pilota: solo inbound + trasferimento reale) |
+| 5 | Multi-tenant + onboarding | ◐ Ridotta a "Pilot-Ready" (vedi sotto) |
 
-**Fase 1 — piani:**
+**Percorso pilot-first (ordine di esecuzione):**
 
-| Piano | Cosa fa | Stato |
-|-------|---------|-------|
-| 01-01 | Scheletro: venv 3.12, dipendenze, config tenant + SQLite, seam interfacce, test harness | ✓ Completo |
-| 01-02 | Slice voce E2E: pipeline Deepgram→Claude→ElevenLabs, saluto IT, barge-in | ✓ Completo (verificato live) |
-| 01-03 | Strumentazione latenza per-stage + frase di cortesia su errore | ✅ Completo (verificato live) |
+| Step | Cosa | Stato |
+|------|------|-------|
+| 0 | Pulizia: CLAUDE.md senza GSD, RUNBOOK aggiornato, `aiosmtplib` dichiarata in pyproject | ✅ 2026-07-04 |
+| 1 | Sessione di verifica live Fase 3 (SC1–SC5) | ○ Da fare |
+| 2 | Telefonia Telnyx: inbound su DID italiano, routing DID→tenant, parità col path locale, trasferimento reale | ○ Da fare — parte con sessione di ricerca dedicata (flag HIGH in `.planning/research/`) |
+| 3 | Pilot-Ready: secondo tenant via script di seed, prompt caching Anthropic (latenza), checklist installazione pilota, backup `centralino.db` | ○ Da fare |
+
+**Rimandato a dopo il primo cliente pagante:** onboarding CLI, credential store cifrato per-tenant, voice cloning ElevenLabs (+ consenso GDPR), canale SMS/WhatsApp (resta stub), migrazione Postgres, target rigido <800ms.
 
 ### 📊 Latenza misurata (Fase 1, dati reali `logs/latency.jsonl`)
 

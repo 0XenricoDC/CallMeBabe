@@ -26,6 +26,8 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     # Phase 2: Italian date/time parsing
     "dateparser>=1.4.0,<2",
+    # Phase 3: email notification channel (SMTP)
+    "aiosmtplib>=3.0,<4",
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,7 @@
 # Roadmap: Centralino AI
 
+> **⚠️ Riorganizzazione pilot-first (2026-07-03).** GSD è stato disinstallato; questo file resta come storico. La verità operativa (stato, roadmap corrente, checklist) è in `RUNBOOK.md`, il contesto strategico in `CLAUDE.md` → "Priorità corrente". In sintesi: Fase 3 è codice-completa ma con le verifiche live SC1–SC5 ancora da eseguire; la Fase 4 (Telnyx) parte con scope pilota (solo inbound + trasferimento reale); la Fase 5 è ridotta a "Pilot-Ready" (secondo tenant via seed, prompt caching, checklist installazione, backup DB) — onboarding CLI, credential store cifrato e voice cloning sono rimandati a dopo il primo cliente pagante.
+
 ## Overview
 
 Five milestones build the system inside-out, matching the dependency graph of the stack. The local voice loop (M1) locks in every architectural decision that is expensive to retrofit — streaming, barge-in, latency instrumentation, interface seams. Booking and FAQ (M2) exercise those seams with real external integrations. Handoff, summaries, and notifications (M3) close the safe-exit loop before telephony adds codec and transfer complexity. Telnyx real-call telephony (M4) is then a pure transport-layer swap. Multi-tenant hardening and onboarding tooling (M5) completes the "new client = new config row" promise. Each milestone is a hard stop-and-test gate: the next phase does not start until the owner validates the current one.

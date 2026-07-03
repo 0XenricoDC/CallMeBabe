@@ -139,24 +139,23 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
+## Workflow
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+GSD è stato disinstallato (2026-07-03). Gli artefatti storici restano in `.planning/` come riferimento; **la verità operativa corrente è `RUNBOOK.md`** (stato, comandi, roadmap).
 
-Use these entry points:
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
+Si lavora con le skill superpowers:
+- Feature / lavoro nuovo → `superpowers:brainstorming` → `superpowers:writing-plans` → esecuzione con checkpoint
+- Bug / comportamenti inattesi → `superpowers:systematic-debugging`
+- Implementazione → `superpowers:test-driven-development`; prima di dichiarare completo → `superpowers:verification-before-completion`
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
+## Priorità corrente — Pilot-first (dal 2026-07-03)
 
+Obiettivo: **primo cliente pilota installabile** (verticale: **ristoranti**; MVP = risponde al telefono, prende una prenotazione sul calendario, invia riepilogo Telegram al titolare). Roadmap riorganizzata (dettaglio in `RUNBOOK.md` → Stato avanzamento):
 
+1. **Verifica live Fase 3** (SC1–SC5 dal browser: trasferimento, notifiche, failover STT forzato, dead-air)
+2. **Fase Telefonia Telnyx** — inbound only, trasferimento operatore reale incluso; richiede sessione di ricerca dedicata (flag HIGH in `.planning/research/`)
+3. **Fase Pilot-Ready** — secondo tenant via seed, prompt caching Anthropic (latenza), checklist installazione pilota, backup `centralino.db`
 
-<!-- GSD:profile-start -->
-## Developer Profile
+**Rimandato a dopo il primo cliente pagante:** onboarding CLI, credential store cifrato per-tenant, voice cloning (+ consenso GDPR), canale SMS/WhatsApp, migrazione Postgres, target rigido <800ms.
 
-> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
+Regola del titolare: niente feature o progetti fuori da questo percorso senza sua decisione esplicita.

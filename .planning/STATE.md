@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: 03-04 Task 4 human-verify checkpoint (live SC3/SC4/SC5 degradation ladder)
-last_updated: "2026-06-29T20:00:16.804Z"
-last_activity: 2026-06-29
+status: archived (GSD disinstallato 2026-07-03 — verità operativa in RUNBOOK.md)
+stopped_at: Fase 3 codice-completa; checkpoint live SC1–SC5 pendenti (checklist in RUNBOOK.md)
+last_updated: "2026-07-04"
+last_activity: 2026-07-04
 progress:
   total_phases: 5
   completed_phases: 3
