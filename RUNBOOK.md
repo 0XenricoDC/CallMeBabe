@@ -3,7 +3,7 @@
 Guida operativa rapida: come avviare, provare e testare il bot.
 **Questo file viene aggiornato man mano che il progetto avanza.**
 
-> Ultimo aggiornamento: 2026-07-04 — Fasi 1–3 complete a livello di codice (136 test verdi + 1 skip). Roadmap riorganizzata **pilot-first** (obiettivo: primo cliente pilota ristorante — vedi CLAUDE.md → Priorità corrente). Prossimo passo: sessione di verifica live Fase 3 (checklist SC1–SC5 qui sotto), poi telefonia Telnyx.
+> Ultimo aggiornamento: 2026-07-04 (sera) — Verifica live Fase 3 chiusa: SC1/SC2 ✅, SC3 core ✅ con 1 bug killer fixato (139 test verdi + 1 skip), SC4 skipped, SC5 osservato. Difetti residui annotati nella checklist. **Prossimo passo: Fase Telefonia Telnyx** (parte con la sessione di ricerca dedicata — flag HIGH in `.planning/research/`).
 
 ---
 
@@ -88,17 +88,32 @@ Apri `http://localhost:7860/prebuilt/`, consenti il microfono, premi Connect:
 
 Prerequisiti: bot avviato con `.venv/Scripts/python main.py --tenant=demo`, client su `http://localhost:7860/prebuilt/`. Gli scenari SC3/SC4 richiedono riavvii con `.env`/codice modificati temporaneamente.
 
-1. **SC1 — Trasferimento operatore** (3 varianti, una chiamata ciascuna):
+1. ✅ **SC1 — Trasferimento operatore** (3 varianti, una chiamata ciascuna):
    (a) chiedi subito "mi passi una persona?"; (b) chiedilo a metà prenotazione; (c) parla in inglese.
    Atteso: il bot annuncia il trasferimento e chiude la chiamata; nel log il numero viene dalla config del tenant.
-2. **SC2 — Notifica di fine chiamata**: completa una prenotazione e chiudi → riga `[CALL LOG]` in console (+ messaggio Telegram se `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` in `.env`) con esito `prenotato`. Ripeti abbandonando a metà → esito `abbandonato`.
-3. **SC3 — Failover STT sulla stessa chiamata**: in `.env` metti `DEEPGRAM_API_KEY=invalid`, riavvia, connettiti e parla.
+   ✔️ *Verificato live 2026-07-04.*
+2. ✅ **SC2 — Notifica di fine chiamata**: completa una prenotazione e chiudi → riga `[CALL LOG]` in console (+ messaggio Telegram se `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` in `.env`) con esito `prenotato`. Ripeti abbandonando a metà → esito `abbandonato`.
+   ✔️ *Verificato live 2026-07-04: messaggio Telegram ricevuto con esito `prenotato`.*
+3. ◐ **SC3 — Failover STT sulla stessa chiamata**: in `.env` metti `DEEPGRAM_API_KEY=invalid`, riavvia, connettiti e parla.
    Atteso: frase di cortesia *"Un momento, sto risolvendo un problema tecnico…"* e la **stessa chiamata** continua su faster-whisper (primo turno lento 10-20s: carica il modello sul CPU). La chiamata NON deve cadere.
-4. **SC4 — Doppio guasto → trasferimento**: chiave ancora invalida **e** whisper forzato a fallire: in `src/pipeline/stt_switcher.py` cambia temporaneamente `device="cpu"` → `device="cuda"` (riga ~320, macchina senza GPU). Riavvia, parla.
-   Atteso: dopo qualche ciclo *"Mi scusi, sto riscontrando problemi tecnici. La trasferisco a un operatore."*, chiusura pulita, riga in `call_logs` con `outcome='fallito'`, nessun silenzio prolungato.
-5. **SC5 — Watchdog dead-air**: chiamata normale (chiavi valide), resta in silenzio ~6s → il bot ti sollecita; resta zitto altri ~8s → parte la sequenza di recupero/chiusura.
+   ✔️ *2026-07-04: verificato il core — failover scatta, la chiamata sopravvive, whisper trascrive e il bot risponde. Bug bloccante trovato e fissato (vedi "Bug fixati" sotto). Ultimo run inconcludente per rete/DNS instabile lato macchina di test; verifica completa rimandata (decisione titolare: avanti verso MVP).*
+4. ⏭️ **SC4 — Doppio guasto → trasferimento** (SKIPPED 2026-07-04, decisione titolare): chiave invalida **e** whisper forzato a fallire (`device="cuda"` in `stt_switcher.py`, riga ~340). Atteso: *"…La trasferisco a un operatore."*, chiusura pulita, `outcome='fallito'`.
+5. ◐ **SC5 — Watchdog dead-air**: chiamata normale, silenzio ~6s → sollecito; altri ~8s → chiusura.
+   ✔️ *2026-07-04: osservato live incidentalmente durante SC3 — sollecito T1 e chiusura T2 funzionano. Nota: la frase finale può non essere udibile (bug noto sotto).*
 
-⚠️ **Al termine ripristina**: `DEEPGRAM_API_KEY` corretta in `.env` e `device="cpu"` in `stt_switcher.py`, poi riavvia e fai un giro di smoke test base.
+⚠️ **Al termine dei test forzati ripristina**: `DEEPGRAM_API_KEY` corretta in `.env` (fatto 2026-07-04) e `device="cpu"` in `stt_switcher.py`, poi smoke test base.
+
+#### 🐛 Bug fixati nella sessione live 2026-07-04
+
+- **SC3 killer (FIXATO)**: il monitor di `FailoverDeepgramSTTService` continuava a spingere ErrorFrame ogni 2s anche dopo il failover riuscito; l'`ErrorFallbackObserver` li contava e chiudeva la chiamata a ~13s con esito `fallito`. Fix: il monitor ora tace quando Deepgram non è il servizio attivo (`_is_active_stt()`, wiring in `build_stt_switcher`). Coperto da 3 test nuovi (139 verdi).
+- Aggiunta strumentazione permanente: log `[WATCHDOG]` (reset/idle in `bot.py`) e `[WHISPER]` (load/segmenti in `stt_switcher.py`) per diagnosi live.
+
+#### ⚠️ Difetti noti residui (non bloccanti per MVP, da ripescare prima del pilota)
+
+1. **Frase di chiusura tagliata**: su escalation watchdog/SC4 l'`EndWorkerFrame` chiude la pipeline prima che il TTS della frase finale ("…la passo a un operatore") venga riprodotto. Il pattern identico in `handle_transfer_call` (SC1) invece si sente — da indagare la differenza (push da aggregator vs worker.queue).
+2. **Timer dead-air non riparte** se il turno utente inizia mentre il bot sta ancora parlando e poi la trascrizione non arriva: il guard `_user_turn_in_progress` impedisce l'avvio del timer su BotStoppedSpeaking → silenzio infinito invece della chiusura SC5.
+3. **Chiave Deepgram nei log**: il warning di pipecat `Connection lost, will retry` stampa l'header `Authorization` completo in console. Con chiave valida e drop di rete la chiave finisce nei log (T-02-KEY). Hardening: filtro loguru o patch del logging.
+4. **Whisper load dipendente dalla rete**: al primo uso huggingface fa un check online anche a modello già in cache; con DNS instabile può bloccarsi. Hardening: `local_files_only=True` quando la cache esiste.
 
 ---
 
@@ -133,7 +148,7 @@ Prerequisiti: bot avviato con `.venv/Scripts/python main.py --tenant=demo`, clie
 | Step | Cosa | Stato |
 |------|------|-------|
 | 0 | Pulizia: CLAUDE.md senza GSD, RUNBOOK aggiornato, `aiosmtplib` dichiarata in pyproject | ✅ 2026-07-04 |
-| 1 | Sessione di verifica live Fase 3 (SC1–SC5) | ○ Da fare |
+| 1 | Sessione di verifica live Fase 3 (SC1–SC5) | ◐ 2026-07-04: SC1 ✅ SC2 ✅ SC3 core ✅ (+1 bug killer fixato) · SC5 osservato · SC4 skipped — chiusa per decisione titolare, difetti residui annotati sopra |
 | 2 | Telefonia Telnyx: inbound su DID italiano, routing DID→tenant, parità col path locale, trasferimento reale | ○ Da fare — parte con sessione di ricerca dedicata (flag HIGH in `.planning/research/`) |
 | 3 | Pilot-Ready: secondo tenant via script di seed, prompt caching Anthropic (latenza), checklist installazione pilota, backup `centralino.db` | ○ Da fare |
 

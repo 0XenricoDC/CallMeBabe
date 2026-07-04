@@ -33,7 +33,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from typing import AsyncGenerator
+
+from loguru import logger
 
 from pipecat.frames.frames import EndWorkerFrame, ErrorFrame, Frame, TTSSpeakFrame
 from pipecat.pipeline.service_switcher import (
@@ -89,6 +92,14 @@ class FailoverDeepgramSTTService(DeepgramSTTService):
     CLAUDE.md: settings=DeepgramSTTService.Settings(...) only; nova-2 + Italian.
     """
 
+    # Ref to the ServiceSwitcher strategy, wired by build_stt_switcher() after the
+    # switcher exists (SC3 live-bug fix, 2026-07-04). While another service is active,
+    # the monitor stays silent: its ErrorFrames would be dropped by the switcher filter
+    # anyway, but ErrorFallbackObserver sees every push (observers fire before
+    # filtering) and would escalate + EndWorkerFrame a call whose failover SUCCEEDED.
+    # None (e.g. standalone use) → gate disabled, monitor always pushes.
+    _switcher_strategy = None
+
     async def start(self, frame) -> None:  # frame: StartFrame
         """Start Deepgram STT and launch the connection-health monitor task.
 
@@ -130,10 +141,21 @@ class FailoverDeepgramSTTService(DeepgramSTTService):
         """
         await asyncio.sleep(_STT_HEALTH_GRACE)
         while True:
-            if not self._connection_ready.is_set():
+            if not self._connection_ready.is_set() and self._is_active_stt():
                 # Static message only — NEVER log the api_key or raw error (T-02-KEY/V7).
                 await self.push_error("Deepgram STT connection unavailable", fatal=False)
             await asyncio.sleep(_STT_ERROR_INTERVAL)
+
+    def _is_active_stt(self) -> bool:
+        """Return True if this service is the switcher's active STT (or no switcher wired).
+
+        Evaluated per monitor tick: after failover to whisper this returns False (monitor
+        silent — no stale ErrorFrame spam toward ErrorFallbackObserver, SC3); if the
+        strategy round-robins back to a still-dead Deepgram it returns True again, so the
+        monitor resumes push_error and failover/SC4 escalation keep working.
+        """
+        strategy = getattr(self, "_switcher_strategy", None)
+        return strategy is None or strategy.active_service is self
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +223,10 @@ class LazyWhisperSTTService(WhisperSTTService):
             # Load model in a thread pool — keeps the async event loop unblocked.
             # First call may take 5-15s on CPU (LARGE_V3_TURBO ~1.5GB, int8).
             # D-12: trade-off accepted; degraded mode > dead-air (SC3, T-03-DOS).
+            # Live-debug 2026-07-04: the load may contact HuggingFace Hub — with a
+            # flaky network it can stall here, so log start/end for visibility.
+            logger.debug("[WHISPER] first request — loading model (10-20s on CPU)...")
+            t0 = time.monotonic()
             try:
                 from faster_whisper import WhisperModel as _WhisperModel
 
@@ -216,12 +242,19 @@ class LazyWhisperSTTService(WhisperSTTService):
                 # system paths, stack traces, or other non-PII-but-sensitive detail.
                 # Yield a non-fatal ErrorFrame so process_generator surfaces it to the
                 # ServiceSwitcher (handle_error path) rather than crashing the generator.
+                logger.warning("[WHISPER] model load FAILED after {:.1f}s — yielding ErrorFrame",
+                               time.monotonic() - t0)
                 yield ErrorFrame(error="Whisper STT unavailable", fatal=False)
                 return
+            logger.debug("[WHISPER] model ready in {:.1f}s", time.monotonic() - t0)
 
         # Delegate to the parent's transcription logic now that model is loaded.
+        # V7/T-03-LOG: log only sizes/timing — never the transcribed text (PII).
+        logger.debug("[WHISPER] transcribing segment ({} bytes)...", len(audio))
+        t1 = time.monotonic()
         async for frame in super().run_stt(audio):
             yield frame
+        logger.debug("[WHISPER] segment done in {:.1f}s", time.monotonic() - t1)
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +364,10 @@ def build_stt_switcher(worker_ref_holder: WorkerRefHolder) -> ServiceSwitcher:
         services=[deepgram_stt, whisper_stt],
         strategy_type=ServiceSwitcherStrategyFailover,
     )
+
+    # SC3 live-bug fix (2026-07-04): the health monitor gates push_error on being the
+    # active STT — see FailoverDeepgramSTTService._is_active_stt for the rationale.
+    deepgram_stt._switcher_strategy = stt_switcher.strategy
 
     # --- Switch counter for SC4 escalation (lives in closure) ---
     # One escalation per call: the shared guard in flow_manager.state prevents both

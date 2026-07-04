@@ -258,6 +258,90 @@ def test_failover_monitor_calls_push_error_when_connection_not_ready():
     )
 
 
+def test_failover_monitor_silent_when_not_active_service():
+    """SC3 live-bug regression: monitor must NOT push_error when Deepgram is not active.
+
+    Live failure (2026-07-04): with an invalid Deepgram key, the monitor kept calling
+    push_error every _STT_ERROR_INTERVAL even AFTER the switcher had failed over to
+    whisper. The ServiceSwitcher filter drops those frames, but ErrorFallbackObserver
+    sees every push (observers fire before filtering) — after 3 courtesy cycles it
+    escalated with EndWorkerFrame and killed a call whose failover had SUCCEEDED.
+
+    Contract: when a switcher strategy is wired (svc._switcher_strategy) and its
+    active_service is NOT this instance, the monitor must stay silent.
+
+    RED: monitor has no active-service gate — push_error fires anyway.
+    GREEN: monitor checks the strategy and skips push_error while inactive.
+    """
+    from src.pipeline.stt_switcher import FailoverDeepgramSTTService
+    import src.pipeline.stt_switcher as mod
+
+    svc = object.__new__(FailoverDeepgramSTTService)
+    svc._connection_ready = asyncio.Event()  # NOT set — connection is down
+    push_error_spy = AsyncMock()
+    svc.push_error = push_error_spy
+
+    # Strategy says another service (whisper) is active.
+    strategy = MagicMock(name="strategy")
+    strategy.active_service = MagicMock(name="whisper")
+    svc._switcher_strategy = strategy
+
+    async def _run():
+        with patch.object(mod, "_STT_HEALTH_GRACE", 0.01), \
+             patch.object(mod, "_STT_ERROR_INTERVAL", 0.01):
+            task = asyncio.create_task(svc._failover_monitor())
+            await asyncio.sleep(0.08)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_run())
+    push_error_spy.assert_not_called(), (
+        "_failover_monitor must NOT push_error while another service is active — "
+        "stale error spam drives ErrorFallbackObserver to kill a healthy failover call (SC3)."
+    )
+
+
+def test_failover_monitor_resumes_when_service_active_again():
+    """SC4 preserved: when the strategy re-activates Deepgram, the monitor pushes again.
+
+    Round-robin can switch BACK to a still-dead Deepgram (whisper error → next service).
+    The monitor must then resume push_error so the switcher can fail over again and the
+    SC4 switch counter keeps climbing toward escalation.
+
+    GREEN: gate is evaluated per tick — active again → push_error fires.
+    """
+    from src.pipeline.stt_switcher import FailoverDeepgramSTTService
+    import src.pipeline.stt_switcher as mod
+
+    svc = object.__new__(FailoverDeepgramSTTService)
+    svc._connection_ready = asyncio.Event()  # NOT set
+    push_error_spy = AsyncMock()
+    svc.push_error = push_error_spy
+
+    strategy = MagicMock(name="strategy")
+    strategy.active_service = svc  # Deepgram is the active service
+    svc._switcher_strategy = strategy
+
+    async def _run():
+        with patch.object(mod, "_STT_HEALTH_GRACE", 0.01), \
+             patch.object(mod, "_STT_ERROR_INTERVAL", 0.01):
+            task = asyncio.create_task(svc._failover_monitor())
+            await asyncio.sleep(0.08)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_run())
+    push_error_spy.assert_called(), (
+        "_failover_monitor must resume push_error when the strategy re-activates this service."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Plan 03-06 / Task 1 (RED): build_stt_switcher uses FailoverDeepgramSTTService
 # ---------------------------------------------------------------------------
@@ -289,6 +373,37 @@ def test_build_stt_switcher_uses_failover_deepgram_stt_service():
         "build_stt_switcher must construct FailoverDeepgramSTTService (SC3/SC4 — not plain DeepgramSTTService)."
     )
     assert isinstance(switcher, ServiceSwitcher)
+
+
+def test_build_stt_switcher_wires_strategy_ref_into_deepgram():
+    """build_stt_switcher must give the Deepgram service a ref to the switcher strategy.
+
+    The FailoverDeepgramSTTService health monitor needs strategy.active_service to
+    know whether it is still the active STT (SC3 live-bug fix — see
+    test_failover_monitor_silent_when_not_active_service).
+
+    RED: build_stt_switcher never sets _switcher_strategy.
+    GREEN: deepgram_stt._switcher_strategy is stt_switcher.strategy after build.
+    """
+    from src.pipeline.stt_switcher import WorkerRefHolder, build_stt_switcher
+
+    holder = WorkerRefHolder()
+
+    with patch("src.pipeline.stt_switcher.FailoverDeepgramSTTService") as MockFDSS, \
+         patch("src.pipeline.stt_switcher.LazyWhisperSTTService") as MockLWSS:
+        fake_deepgram = MagicMock(name="fake_deepgram")
+        fake_deepgram.queue_frame = AsyncMock()
+        fake_whisper = MagicMock(name="fake_whisper")
+        fake_whisper.queue_frame = AsyncMock()
+        MockFDSS.return_value = fake_deepgram
+        MockLWSS.return_value = fake_whisper
+
+        stt_switcher = build_stt_switcher(holder)
+
+    assert fake_deepgram._switcher_strategy is stt_switcher.strategy, (
+        "build_stt_switcher must wire the switcher strategy into the Deepgram service "
+        "so the health monitor can gate push_error on active_service (SC3)."
+    )
 
 
 def test_real_errorframe_path_triggers_failover_and_courtesy_phrase():

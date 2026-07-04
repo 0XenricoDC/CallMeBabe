@@ -22,6 +22,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from loguru import logger
 from pipecat.frames.frames import LLMUpdateSettingsFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
@@ -120,6 +121,9 @@ class _DeadAirHandler:
 
     def reset(self) -> None:
         """Reset the idle counter — call from on_user_turn_started (user spoke again)."""
+        # Visible marker for live SC3/SC5 verification: if the caller speaks and this
+        # line does NOT appear, VAD/turn-start never fired (upstream problem).
+        logger.debug("[WATCHDOG] user turn started — ladder reset (count was {})", self._count)
         self._count = 0
 
     async def on_idle(self, aggregator) -> None:
@@ -138,6 +142,7 @@ class _DeadAirHandler:
         from pipecat.processors.frame_processor import FrameDirection
 
         self._count += 1
+        logger.debug("[WATCHDOG] idle fired — count={} (1=re-prompt, 2=escalation)", self._count)
         if self._count == 1:
             # T1 expired — gentle re-prompt (D-14, SC5).
             # Push an LLMMessagesAppendFrame that instructs the LLM to check naturally
