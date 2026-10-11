@@ -1,118 +1,95 @@
-# Centralino AI
+# 📞 CallMeBabe — AI Phone Receptionist
 
-Assistente vocale telefonico multi-tenant per piccole attività italiane
-(ristoranti, hotel/B&B, studi medici/dentistici). Un solo motore self-hosted,
-con BYO API keys, che risponde alle chiamate in entrata in italiano naturale:
-prende prenotazioni/appuntamenti, risponde a FAQ da una knowledge base
-per-cliente, trasferisce a un operatore quando serve, e a fine chiamata invia al
-titolare un riepilogo. Ogni cliente è un record di configurazione, **non** una
-modifica al codice.
+> Self-hosted, multi-tenant AI voice assistant that answers phone calls for Italian small businesses — in natural Italian.
 
-Stack: **Pipecat 1.4.0** (Python) + **Pipecat Flows 1.3.0** — STT Deepgram → LLM
-Claude → TTS ElevenLabs, con Silero VAD per il barge-in.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Pipecat](https://img.shields.io/badge/Pipecat-1.4-000000)
+![Claude](https://img.shields.io/badge/LLM-Claude-D97757?logo=anthropic&logoColor=white)
+![Deepgram](https://img.shields.io/badge/STT-Deepgram-13EF93)
+![ElevenLabs](https://img.shields.io/badge/TTS-ElevenLabs-000000)
+![Telnyx](https://img.shields.io/badge/Telephony-Telnyx-00C08B)
+
+🇮🇹 [Versione italiana](./README.it.md)
 
 ---
 
-## Setup
+## What it does
 
-### 1. Requisiti
+CallMeBabe picks up incoming calls for restaurants, hotels/B&Bs and medical/dental practices and handles them end-to-end:
 
-- **Python 3.12** (3.11 va bene; 3.13 **no** — `ctranslate2`/`faster-whisper` non
-  hanno wheel Windows per 3.13). Il file `.python-version` fissa `3.12`.
-- Git, e una connessione per scaricare le dipendenze ML (diverse centinaia di MB).
+- 🗓️ **Takes bookings and appointments** — parses Italian dates and times, checks availability, writes to the calendar
+- ❓ **Answers FAQs** from a per-client knowledge base (menu, prices, opening hours, address…)
+- 🙋 **Transfers to a human** when the caller asks for it or the bot can't help
+- 📝 **Sends the owner a call summary** — transcript, outcome and booking details
 
-Verifica Python 3.12:
+Every client is a **configuration record, not a code change**: greeting, voice, knowledge base, calendar and notification channel are all per tenant.
 
-```bash
-py -3.12 --version     # Windows
-python3.12 --version   # macOS/Linux
+## Architecture
+
+```
+Caller ──► Telnyx (Italian number) ──► Pipecat pipeline
+                                         │
+             Silero VAD (barge-in) ──────┤
+             Deepgram STT (it) ──────────┤  fallback: faster-whisper (self-hosted)
+             Claude + tool calling ──────┤  ◄── Pipecat Flows (conversation states)
+             ElevenLabs TTS (it) ────────┘
+                                         │
+         ┌───────────────────────────────┼─────────────────────────────┐
+         ▼                               ▼                             ▼
+  CalendarProvider               Knowledge base                NotificationChannel
+  (Google Calendar / memory)     (per tenant)                  (email · SMS · Telegram · log)
 ```
 
-### 2. Crea il virtual environment e installa le dipendenze
+Telephony, calendar and notifications sit behind interfaces, so providers can be swapped (e.g. Telnyx → Twilio) without touching the conversation logic.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | Pipecat 1.4 + Pipecat Flows 1.3 |
+| Speech-to-text | Deepgram (Italian), faster-whisper fallback |
+| LLM | Anthropic Claude with tool calling |
+| Text-to-speech | ElevenLabs (Italian voice, per-tenant voice cloning ready) |
+| Telephony | Telnyx with Italian geographic numbers |
+| Storage | SQLite (aiosqlite), Postgres-ready |
+| Quality | pytest, ruff, mypy |
+
+## Quick start
 
 ```bash
-# Windows (PowerShell o Git Bash)
+# Python 3.12 is required (3.13 has no Windows wheels for ctranslate2)
 py -3.12 -m venv .venv
-.venv/Scripts/python -m pip install --upgrade pip
 .venv/Scripts/pip install -e ".[dev]"
 
-# macOS/Linux
-python3.12 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/pip install -e ".[dev]"
-```
-
-> Le dipendenze includono pacchetti ML pesanti (`ctranslate2`, `faster-whisper`,
-> `aiortc`, `opencv-python`): il primo install scarica parecchi MB.
-
-### 3. Crea gli account e ottieni le 3 chiavi API
-
-Copia `.env.example` in `.env` e compila le chiavi. **Non committare mai `.env`.**
-
-| Servizio | Dove creare l'account | Chiave | Note |
-|----------|-----------------------|--------|------|
-| **Deepgram** (STT italiano) | https://console.deepgram.com → *API Keys* → *Create a New API Key* | `DEEPGRAM_API_KEY` | Free tier ~12.000 minuti/anno. |
-| **Anthropic** (LLM Claude) | https://console.anthropic.com → *Settings* → *API Keys* → *Create Key* | `ANTHROPIC_API_KEY` | Richiede billing attivo. Default model: `claude-haiku-4-5`. |
-| **ElevenLabs** (TTS italiano) | https://elevenlabs.io → *Profile* → *API Key* | `ELEVENLABS_API_KEY` | Free tier ~10.000 caratteri/mese. |
-
-Inoltre imposta `DEMO_VOICE_ID` con l'ID di una voce italiana da
-https://elevenlabs.io/voice-library (un default è già presente in `.env.example`).
-
-```bash
-cp .env.example .env   # poi apri .env e incolla le tue chiavi
-```
-
-**Sicurezza:** non committare mai `.env`; non loggare mai le chiavi API in chiaro
-(al massimo le ultime 4 cifre per debug). Tutte le chiavi sono caricate via
-`python-dotenv`; nessuna chiave è hardcoded nel codice.
-
-### 4. (Opzionale) Pre-scarica il modello Whisper
-
-Il fallback STT self-hosted usa `faster-whisper` con il modello `large-v3-turbo`
-(~1.5 GB), scaricato da HuggingFace al **primo** uso di Whisper. Pre-scaricalo per
-evitare un'attesa silenziosa durante la prima chiamata:
-
-```bash
-.venv/Scripts/python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo')"
-```
-
-### 5. Esegui il bot demo
-
-```bash
+cp .env.example .env      # add DEEPGRAM_API_KEY, ANTHROPIC_API_KEY, ELEVENLABS_API_KEY
 python main.py --tenant=demo
 ```
 
-Poi apri `http://localhost:7860/prebuilt/` nel browser, concedi l'accesso al
-microfono e parla con il bot in italiano. *(L'assemblaggio della pipeline live
-arriva nel Plan 02 di questa fase.)*
+Then open `http://localhost:7860/prebuilt/`, allow microphone access and talk to the bot in Italian.
 
----
+Telephony setup with Telnyx is covered in [`GUIDA-TELNYX.md`](./GUIDA-TELNYX.md) and operations in [`RUNBOOK.md`](./RUNBOOK.md).
 
-## Sviluppo
+## Development
 
 ```bash
-# Test (unit, ~5s, nessuna chiamata API live)
-.venv/Scripts/python -m pytest tests/ -q
-
-# Lint / type-check
+.venv/Scripts/python -m pytest tests/ -q   # unit tests, no live API calls
 .venv/Scripts/ruff check src tests
 .venv/Scripts/mypy src
 ```
 
----
-
-## Struttura del progetto
+## Project structure
 
 ```
 src/
-├── config/
-│   ├── tenant_config.py   # TenantConfig (Pydantic) — il seam di config tipata
-│   └── repository.py      # TenantRepository (aiosqlite), Postgres-ready
-├── db/
-│   ├── schema.sql         # schema tenants completo a colonne nullable
-│   └── seed_demo.py       # seed del tenant `demo`
-└── interfaces/
-    ├── calendar_provider.py     # CalendarProvider ABC (seam Fase 2)
-    └── notification_channel.py  # NotificationChannel ABC (seam Fase 3)
-tests/                     # pytest harness + stub RED per ogni requisito Fase 1
+├── bot.py            # Pipecat pipeline assembly
+├── booking/          # Italian date parsing + booking repository
+├── calendar/         # CalendarProvider: Google Calendar and in-memory
+├── call_log/         # call records and end-of-call summaries
+├── config/           # typed TenantConfig + repository
+└── ...
+data/tenants/demo_trattoria/kb/   # example knowledge base
 ```
+
+## Security
+
+API keys are loaded from `.env` via `python-dotenv` and never hard-coded or logged. `.env`, databases and Google service-account keys are git-ignored.
