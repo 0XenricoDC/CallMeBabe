@@ -10,3 +10,32 @@ boreal-sweep-457713-v6-4c7447d338f1.json
 
 # Local LanceDB vector store (runtime data — not source)
 lancedb/
+
+# --- safety (added before GitHub publish) ---
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+key.properties
+*service-account*.json
+boreal-sweep-*.json
+*.db
+*.sqlite
+*.sqlite3
+.claude/settings.local.json
+lancedb/
+models/Xenova/
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.next/
+dist/
+logs/
+*.log
